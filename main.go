@@ -4,9 +4,6 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
-	"os"
-	"strconv"
-	"strings"
 )
 
 func main() {
@@ -39,7 +36,8 @@ func main() {
 	http.HandleFunc("/machine-status", authMiddleware(machineStatusHandler))
 	//http.HandleFunc("/config-history", authMiddleware(adminMiddleware(configHistoryHandler)))
 	http.HandleFunc("/config-history", authMiddleware(permissionMiddleware(PermConfigHistory)(configHistoryHandler)))
-	http.HandleFunc("/config-history/download/", authMiddleware(adminMiddleware(func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/config-history/download/", authMiddleware(adminMiddleware(configHistoryDownloadHandler)))
+	/*http.HandleFunc("/config-history/download/", authMiddleware(adminMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		filename := strings.TrimPrefix(r.URL.Path, "/config-history/download/")
 		filepath := config.ConfigHistoryDir + "/" + filename
 		if _, err := os.Stat(filepath); os.IsNotExist(err) {
@@ -49,7 +47,7 @@ func main() {
 		w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(filename))
 		w.Header().Set("Content-Type", "application/octet-stream")
 		http.ServeFile(w, r, filepath)
-	})))
+	})))*/
 	http.HandleFunc("/config-upload", authMiddleware(adminMiddleware(configUploadHandler)))
 
 	// Route admin

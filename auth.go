@@ -125,17 +125,20 @@ func authenticateLocal(username, password string) bool {
 	u := getUserByUsername(username)
 	if u == nil {
 		log.Printf("Tentativo di accesso per utente inesistente: %s", username)
+		WriteAuditLog("login_failed", username, "Tentativo di accesso per utente inesistente")
 		return false
 	}
 
 	// Controlla se l'account è bloccato
 	if !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
 		log.Printf("Accesso negato per utente bloccato: %s (bloccato fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
+		WriteAuditLog("login_failed", username, "Accesso negato per utente bloccato")
 		return false
 	}
 
 	if !u.Enabled {
 		log.Printf("Tentativo di accesso per utente disabilitato: %s", username)
+		WriteAuditLog("login_failed", username, "Tentativo di accesso per utente disabilitato")
 		return false
 	}
 
@@ -163,17 +166,20 @@ func authenticateLocal(username, password string) bool {
 		u.FailedLoginAttempts = 0
 		u.LockedUntil = time.Time{}
 		saveUsers(currentDataDir)
+		WriteAuditLog("login_success", username, "Login riuscito")
 		log.Printf("Login riuscito per %s", username)
 		return true
 	}
 
 	// Tentativo fallito: incrementa contatore
 	u.FailedLoginAttempts++
+	WriteAuditLog("login_failed", username, "Tentativo di accesso fallito")
 	log.Printf("Tentativo di accesso fallito per %s (%d/5)", username, u.FailedLoginAttempts)
 
 	// Dopo 5 tentativi, blocca l'account per 15 minuti
 	if u.FailedLoginAttempts >= 5 {
 		u.LockedUntil = time.Now().Add(15 * time.Minute)
+		WriteAuditLog("login_failed", username, "Account bloccato per 15 minuti")
 		log.Printf("Account %s bloccato per 15 minuti (fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
 	}
 	saveUsers(currentDataDir)
@@ -274,6 +280,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		session.Values["is_admin"] = (u.Role == RoleAdmin)
 		session.Save(r, w)
 		log.Printf("Login riuscito per %s (admin=%v)", username, u.Role == RoleAdmin)
+		WriteAuditLog("login_success", username, "Login riuscito")
 		http.Redirect(w, r, "/dashboard", http.StatusFound)
 		return
 	}

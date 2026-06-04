@@ -24,5 +24,7 @@
     "config_extensions": [".rcd"],
     "protected_users": ["admin", "root"],
     "upload_dir": "./uploads",
-    "data_dir": "C:\\GITDea\\MP48WebService\\data"
+    "upload_configuration_dir": "C:\\test\\ConfigMp48",
+    "data_dir": "C:\\GITDea\\MP48WebService\\data",
+    "audit_log_dir": "C:\\test\\LogAppMp48"
 }

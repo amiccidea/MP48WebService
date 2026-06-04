@@ -46,6 +46,7 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 		defer dst.Close()
 		io.Copy(dst, file)
 		log.Printf("File %s caricato da %s", handler.Filename, username)
+		WriteAuditLog("config_upload", username, "Configurazione caricata: "+handler.Filename)
 		data := struct {
 			Username        string
 			IsAdmin         bool

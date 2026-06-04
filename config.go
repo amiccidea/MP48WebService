@@ -30,6 +30,7 @@ type Config struct {
 	LogCategories       []LogCategory `json:"log_categories"`
 	ProtectedUsers      []string      `json:"protected_users"`
 	DataDir             string        `json:"data_dir"`
+	AuditLogDir         string        `json:"audit_log_dir"`
 }
 
 func initConfig() {

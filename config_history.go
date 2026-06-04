@@ -3,7 +3,9 @@ package main
 import (
 	"net/http"
 	"os"
+	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -11,7 +13,6 @@ import (
 func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	username, isAdmin := getUserContext(r)
 	perms := getUserPermissions(username)
-
 	backupDir := config.ConfigHistoryDir
 	if backupDir == "" {
 		backupDir = "./config_history"
@@ -103,4 +104,30 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		Permissions:     perms,
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
+}
+
+func configHistoryDownloadHandler(w http.ResponseWriter, r *http.Request) {
+	filename := strings.TrimPrefix(r.URL.Path, "/config-history/download/")
+	if filename == "" {
+		http.Error(w, "Nome file mancante", http.StatusBadRequest)
+		return
+	}
+	filePath := filepath.Join(config.ConfigHistoryDir, filename)
+	// Controlla che il file esista
+	info, err := os.Stat(filePath)
+	if os.IsNotExist(err) {
+		http.Error(w, "File non trovato", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+		return
+	}
+	// Forza il download
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	http.ServeFile(w, r, filePath)
 }

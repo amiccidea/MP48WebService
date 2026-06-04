@@ -209,5 +209,6 @@ func adminUserUnlock(w http.ResponseWriter, r *http.Request) {
 	u.LockedUntil = time.Time{}
 	saveUsers(currentDataDir)
 	log.Printf("Admin ha sbloccato l'account %s", username)
+	WriteAuditLog("user_unlock", username, "Account sbloccato da admin")
 	w.WriteHeader(http.StatusOK)
 }
