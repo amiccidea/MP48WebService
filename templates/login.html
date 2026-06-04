@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - RTU Portal</title>
+    <link rel="stylesheet" href="/static/css/custom.css">
+    <style>
+        body {
+            background: var(--sap-bg-page);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+        }
+        .login-container {
+            max-width: 450px;
+            width: 100%;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .logo img {
+            max-width: 180px;
+            height: auto;
+        }
+        .error {
+            color: #dc3545;
+            margin-top: 1rem;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.8rem;
+            color: var(--sap-text-secondary);
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        label {
+            font-weight: 500;
+            margin-bottom: 0.2rem;
+        }
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .input-wrapper input {
+            width: 100%;
+            padding-right: 2.5rem;
+            box-sizing: border-box;
+        }
+        .toggle-password {
+            position: absolute;
+            right: 0.75rem;
+            cursor: pointer;
+            user-select: none;
+            font-size: 1.2rem;
+            background: transparent;
+            border: none;
+            padding: 0;
+            line-height: 1;
+        }
+        button {
+            width: 100%;
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <div class="logo">
+            <img src="/static/images/logoMp48.png" alt="Logo MP48">
+        </div>
+        <div class="card-modern">
+            <div class="card-header">🔐 Accesso al portale RTU</div>
+            <div class="card-body">
+                <form method="POST">
+                    <div>
+                        <label for="username">Username</label>
+                        <div class="input-wrapper">
+                            <input type="text" id="username" name="username" placeholder="Nome utente" required autofocus>
+                        </div>
+                    </div>
+                    <div>
+                        <label for="password">Password</label>
+                        <div class="input-wrapper">
+                            <input type="password" id="password" name="password" placeholder="••••••" required>
+                            <span class="toggle-password" onclick="togglePassword('password')">👁️</span>
+                        </div>
+                    </div>
+                    <button type="submit">Accedi</button>
+                    {{if .error}}
+                        <div class="error">{{.error}}</div>
+                    {{end}}
+                </form>
+            </div>
+        </div>
+        <div class="footer">
+            <small>Sistema di telecontrollo – hardware embedded</small>
+        </div>
+    </div>
+
+    <script>
+        function togglePassword(fieldId) {
+            const field = document.getElementById(fieldId);
+            const eye = event.currentTarget;
+            if (field.type === "password") {
+                field.type = "text";
+                eye.innerText = "🙈";
+            } else {
+                field.type = "password";
+                eye.innerText = "👁️";
+            }
+        }
+    </script>
+</body>
+</html>

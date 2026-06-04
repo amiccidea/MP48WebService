@@ -1,0 +1,48 @@
+{{define "adminUserEditContent"}}
+<h1>Modifica utente: {{.User.ID}}</h1>
+<div class="card-modern" style="max-width: 600px;">
+    <div class="card-header">Modifica profilo</div>
+    <div class="card-body">
+        <form method="POST" action="/admin/users/edit">
+            <input type="hidden" name="username" value="{{.User.ID}}">
+            {{if not .IsProtected}}
+            <label for="role">Ruolo</label>
+            <select name="role" id="role" style="width:100%; margin-bottom:1rem;">
+                {{range .RolesList}}
+                    <option value="{{.ID}}" {{if eq $.User.Role .ID}}selected{{end}}>{{.Name}}</option>
+                {{end}}
+            </select>
+            <label>
+                <input type="checkbox" name="enabled" {{if .User.Enabled}}checked{{end}}> Abilitato
+            </label>
+            {{else}}
+            <p><strong>⚠️ Questo utente è protetto e non può essere modificato o eliminato.</strong></p>
+            {{end}}
+            <div style="margin:1rem 0;">
+                <label>
+                    <input type="checkbox" name="reset_password"> Reset password (valore predefinito: username123) e obbliga il cambio al prossimo accesso
+                </label>
+            </div>
+            {{if .User.LockedUntil}}
+            <div style="margin: 1rem 0;">
+                <p>⚠️ Account bloccato fino a {{.User.LockedUntil.Format "02/01/2006 15:04:05"}}</p>
+                <button type="button" id="unlockBtn" style="background:#ffc107;">Sblocca account</button>
+            </div>
+            {{end}}
+            <div style="margin-top:1rem;">
+                <button type="submit" name="action" value="save">Salva</button>
+                {{if not .IsProtected}}
+                <button type="submit" name="action" value="delete" onclick="return confirm('Sei sicuro di voler eliminare questo utente?')" style="background:#dc3545;">Elimina</button>
+                {{end}}
+                <a href="/admin/users">Annulla</a>
+            </div>
+        </form>
+    </div>
+</div>
+<script>
+    document.getElementById('unlockBtn')?.addEventListener('click', function() {
+        fetch('/admin/users/unlock?username={{.User.ID}}', { method: 'POST' })
+            .then(res => res.ok ? window.location.reload() : alert('Errore sblocco'));
+    });
+</script>
+{{end}}

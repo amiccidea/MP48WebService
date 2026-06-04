@@ -1,0 +1,32 @@
+{{define "logsContent"}}
+<h1>📄 Log di sistema</h1>
+<div class="card-modern">
+    <div class="card-header">Filtri</div>
+    <div class="card-body">
+        <form id="logFilterForm" style="display: flex; gap: 10px; flex-wrap: wrap;">
+            <select id="logCategory" style="flex:1">
+                <option value="all">Tutte le categorie</option>
+            </select>
+            <input type="date" id="startDate" placeholder="Dal">
+            <input type="date" id="endDate" placeholder="Al">
+            <button type="submit">Cerca</button>
+            <button type="button" id="resetFiltersBtn" style="background: #6c757d;">Reset</button>
+        </form>
+    </div>
+</div>
+<div class="card-modern">
+    <div class="card-header">Elenco log</div>
+    <div class="card-body">
+        <table style="width:100%">
+            <thead>
+                <tr><th>Categoria</th><th>File</th><th>Dimensione</th><th>Data modifica</th><th>Azioni</th></tr>
+            </thead>
+            <tbody id="logsTableBody">
+                <tr><td colspan="5">Caricamento...<\/td><\/tr>
+            </tbody>
+        </table>
+        <div id="pagination"></div>
+    </div>
+</div>
+<script src="/static/js/logs.js"></script>
+{{end}}

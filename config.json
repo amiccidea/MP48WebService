@@ -1,0 +1,28 @@
+{
+    "ldap_server": "ldap://localhost:389",
+    "base_dn": "dc=test,dc=local",
+    "bind_dn": "cn=admin,dc=test,dc=local",
+    "bind_password": "admin",
+    "user_search_base": "ou=people,dc=test,dc=local",
+    "user_filter": "(uid=%s)",
+    "admin_users": ["admin", "root", "your_username"],
+    "session_secret": "cambia-questa-chiave-segreta-con-almeno-32-caratteri",
+    "session_max_age_seconds": 86400,
+    "port": "8080",
+    "log_categories": [
+        {
+            "name": "RTU System",
+            "directories": ["C:\\test\\LogRtu", "C:\\test\\LogRtu\\syslog"]
+        },
+        {
+            "name": "Application",
+            "directories": ["C:\\test\\LogAppMp48"]
+        }
+    ],
+    "log_extensions": [".log", ".txt", ".out", ".trace"],
+    "config_history_dir": "C:\\test\\config_backups",
+    "config_extensions": [".rcd"],
+    "protected_users": ["admin", "root"],
+    "upload_dir": "./uploads",
+    "data_dir": "C:\\GITDea\\MP48WebService\\data"
+}

@@ -1,0 +1,21 @@
+portal/
+├── main.go
+├── go.mod
+├── config.json
+├── system_linux.go
+├── system_windows.go   (opzionale per debug)
+├── templates/
+│   ├── login.html
+│   └── dashboard.html
+└── static/
+    ├── css/
+    │   └── custom.css
+    └── js/
+        └── dashboard.js
+    └── images/
+        └── logoMp48.png
+        └── logoDea.jpg
+data/
+├── users.enc      # file crittografato con la lista utenti
+├── roles.enc      # file crittografato con i ruoli (opzionale, se vuoi persistenza)
+└── encryption.key

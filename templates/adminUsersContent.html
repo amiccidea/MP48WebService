@@ -1,0 +1,57 @@
+{{define "adminUsersContent"}}
+<h1>Gestione Utenti</h1>
+<div class="card-modern" style="margin-bottom:1.5rem;">
+    <div class="card-header">Crea nuovo utente</div>
+    <div class="card-body">
+        <form method="POST" action="/admin/users/create" style="display:flex; gap:1rem; align-items:flex-end;">
+            <div style="flex:2">
+                <label>Username</label>
+                <input type="text" name="username" required>
+            </div>
+            <div style="flex:1">
+                <label>Ruolo</label>
+                <select name="role">
+                    {{range .Roles}}
+                    <option value="{{.ID}}">{{.Name}}</option>
+                    {{end}}
+                </select>
+            </div>
+            <div><button type="submit">Crea utente</button></div>
+        </form>
+        <small>La password iniziale sarà: <strong>username123</strong> (utente dovrà cambiarla al primo accesso)</small>
+    </div>
+</div>
+
+<div class="card-modern">
+    <div class="card-header">Elenco utenti</div>
+    <div class="card-body">
+        <table style="width:100%">
+        <thead>
+            <tr>
+                <th>Username</th>
+                <th>Ruolo</th>
+                <th>Abilitato</th>
+                <th>Password scaduta?</th>
+                <th>Ultima modifica</th>
+                <th>Azioni</th>
+            </tr>
+        </thead>
+        <tbody>
+            {{range .Users}}
+            <tr>
+                <td>{{.ID}}</td>
+                <td>{{.Role}}</td>
+                <td>{{if .Enabled}}✅{{else}}❌{{end}}</td>
+                <td>{{if .MustChangePwd}}Sì{{else}}No{{end}}</td>
+                <td>{{.LastModified.Format "02/01/2006 15:04:05"}}</td>
+                <td>
+                    <a href="/admin/users/edit?username={{.ID}}">✏️ Modifica</a>
+                    {{if ne .ID "admin"}} | <a href="/admin/users/delete?username={{.ID}}" onclick="return confirm('Eliminare utente?')">🗑️ Elimina</a>{{end}}
+                </td>
+            </tr>
+            {{end}}
+        </tbody>
+        </table>
+    </div>
+</div>
+{{end}}

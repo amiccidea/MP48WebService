@@ -1,0 +1,10 @@
+{{define "configUploadContent"}}
+<h1>📤 Carica impostazioni</h1>
+<div class="card-modern"><div class="card-header">Nuova configurazione</div><div class="card-body">
+    {{if .Message}}<div style="background:#dcfce7; padding:0.5rem; margin-bottom:1rem;">✅ {{.Message}}</div>{{end}}
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="configfile" required><br><br>
+        <button type="submit">Carica</button>
+    </form>
+</div></div>
+{{end}}

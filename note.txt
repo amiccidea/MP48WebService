@@ -1,0 +1,48 @@
+Istruzioni per la compilazione e l'esecuzione
+
+    Installazione Go (anche su macchina di sviluppo, poi compili per 32-bit):
+    bash
+
+    # Su macchina di sviluppo (64-bit)
+    go mod init portal
+    go get github.com/go-ldap/ldap/v3 github.com/gorilla/sessions
+
+    Crea i file come sopra (main.go, config.json, templates/*.html).
+
+    Compila per Linux 32-bit:
+    bash
+
+    GOOS=linux GOARCH=386 go build -o portal main.go
+
+    Il binario risultante sarà statico (se usi solo librerie standard + quelle in Go puro – LDAP v3 è in Go puro, nessun cgo). Puoi anche abilitare cgo se vuoi PAM, ma non serve.
+
+    Trasferisci il binario portal, config.json e la cartella templates/ sull'RTU Linux 32-bit.
+
+    Configura il file config.json con i parametri del tuo server LDAP. Se non hai un LDAP, puoi usare un semplice server di test con slapd oppure modifichi il codice per autenticazione locale (ma su richiesta hai detto "tipo ldap", quindi ho implementato quello).
+
+    Esegui (come utente normale, ma per leggere alcune info di sistema potrebbe servire root; se vuoi evitare, rimuovi le letture da /proc):
+    bash
+
+    ./portal
+
+    Il server ascolterà sulla porta 8080 (modificabile in config.json).
+
+Consigli per ambienti RTU con risorse limitate
+
+    Riduci ulteriormente la memoria impostando GOMEMLIMIT=512MiB prima di lanciare il binario.
+
+    Usa systemd per garantire il riavvio automatico.
+
+    HTTPS è raccomandato, ma se l'RTU è su rete isolata puoi anche usare HTTP. Per HTTPS in Go aggiungi http.ListenAndServeTLS.
+
+    Se preferisci autenticazione PAM (utenti di sistema) invece di LDAP, posso fornire una variante; ma ho seguito la tua richiesta "tipo ldap".
+
+Note sulla sicurezza
+
+    La configurazione contiene la password di bind LDAP in chiaro. Imposta i permessi chmod 600 config.json e possibilmente usa variabili d'ambiente.
+
+    Le sessioni sono firmate ma non cifrate; se passi su rete non fiducia, abilita HTTPS e Secure: true nei cookie.
+
+    Per produzione, non esporre la porta 8080 su Internet senza un proxy inverso (nginx) e firewall.
+
+Spero che questa implementazione sia chiara e pronta per il tuo hardware datato. Se desideri modifiche (es. autenticazione locale, webhook aggiuntivi, o grafica più scarna) fammelo sapere!

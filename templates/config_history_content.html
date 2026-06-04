@@ -1,0 +1,51 @@
+{{define "configHistoryContent"}}
+<h1>📜 Storico configurazioni 
+    <small style="font-size:0.8rem; color:#6c757d;">(formati: {{range $i, $ext := .Extensions}}{{if $i}}, {{end}}{{$ext}}{{end}})</small>
+</h1>
+
+<div class="card-modern" style="margin-bottom: 1.5rem;">
+    <div class="card-header">Filtra per data di modifica</div>
+    <div class="card-body">
+        <form method="GET" action="/config-history" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+            <div>
+                <label for="start_date">Dal</label>
+                <input type="date" id="start_date" name="start_date" value="{{.StartDate}}">
+            </div>
+            <div>
+                <label for="end_date">Al</label>
+                <input type="date" id="end_date" name="end_date" value="{{.EndDate}}">
+            </div>
+            <div>
+                <button type="submit">Cerca</button>
+                <a href="/config-history" class="button" style="background: #6c757d;">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="card-modern">
+    <div class="card-header">File disponibili ({{len .Files}})</div>
+    <div class="card-body">
+        {{if .Files}}
+        <table style="width:100%">
+            <thead>
+                <tr><th>Nome file</th><th>Data modifica</th><th>Dimensione</th><th>Azioni</th></tr>
+            </thead>
+            <tbody>
+                {{range .Files}}
+                <tr>
+                    <td><strong>{{.Name}}</strong></td>
+                    <td>{{.ModTime}}</td>
+                    <td>{{.Size}}</td>
+                    <td><a href="/config-history/download/{{.Name}}" style="text-decoration: none;">📥 Scarica</a></td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p>Nessun file trovato con estensioni {{range $i, $ext := .Extensions}}{{if $i}}, {{end}}{{$ext}}{{end}} 
+        {{if or .StartDate .EndDate}}per l'intervallo selezionato{{end}}.</p>
+        {{end}}
+    </div>
+</div>
+{{end}}
