@@ -33,10 +33,13 @@ func main() {
 	http.HandleFunc("/logs", authMiddleware(logsPageHandler))
 	http.HandleFunc("/api/logs", authMiddleware(apiLogsHandler))
 	http.HandleFunc("/logs/download", authMiddleware(logsDownloadHandler))
+	http.HandleFunc("/logs/delete", authMiddleware(adminMiddleware(logsDeleteHandler)))
 	http.HandleFunc("/machine-status", authMiddleware(machineStatusHandler))
 	//http.HandleFunc("/config-history", authMiddleware(adminMiddleware(configHistoryHandler)))
 	http.HandleFunc("/config-history", authMiddleware(permissionMiddleware(PermConfigHistory)(configHistoryHandler)))
 	http.HandleFunc("/config-history/download/", authMiddleware(adminMiddleware(configHistoryDownloadHandler)))
+	http.HandleFunc("/config-history/delete/", authMiddleware(adminMiddleware(configHistoryDeleteHandler)))
+	http.HandleFunc("/config-current/download", authMiddleware(permissionMiddleware(PermConfigHistory)(configCurrentDownloadHandler)))
 	/*http.HandleFunc("/config-history/download/", authMiddleware(adminMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		filename := strings.TrimPrefix(r.URL.Path, "/config-history/download/")
 		filepath := config.ConfigHistoryDir + "/" + filename

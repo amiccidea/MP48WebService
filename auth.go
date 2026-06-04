@@ -395,6 +395,12 @@ func profileChangePasswordPage(w http.ResponseWriter, r *http.Request) {
 	tmpl.ExecuteTemplate(w, "change_password.html", data)
 }
 
+// getUsernameFromContext restituisce il nome utente dalla sessione (vuoto se non autenticato)
+func getUsernameFromContext(r *http.Request) string {
+	username, _ := getUserContext(r)
+	return username
+}
+
 func profileChangePasswordPost(w http.ResponseWriter, r *http.Request) {
 	username, isAdmin := getUserContext(r)
 	oldPwd := r.FormValue("old_password")

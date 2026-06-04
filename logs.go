@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -151,6 +152,7 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	paginatedLogs := allLogs[start:end]
 	log.Printf("Trovati %d log, pagina %d/%d (size=%d)", total, page, totalPages, pageSize)
+	_, isAdmin := getUserContext(r) // username ignorato
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"logs":       paginatedLogs,
@@ -159,9 +161,64 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 		"page":       page,
 		"pageSize":   pageSize,
 		"totalPages": totalPages,
+		"isAdmin":    isAdmin,
 	})
 }
 
+// logsDeleteHandler elimina un file di log (solo admin)
+func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	username, isAdmin := getUserContext(r)
+	log.Printf("logsDeleteHandler: username=%s, isAdmin=%v", username, isAdmin)
+
+	if !isAdmin {
+		http.Error(w, "Accesso negato", http.StatusForbidden)
+		return
+	}
+
+	filePath := r.FormValue("path")
+	if filePath == "" {
+		http.Error(w, "Percorso mancante", http.StatusBadRequest)
+		return
+	}
+	log.Printf("Percorso ricevuto: %q", filePath)
+
+	// Pulizia percorso
+	cleanPath := filepath.Clean(filePath)
+	log.Printf("Percorso pulito: %q", cleanPath)
+
+	// Verifica che il file sia in una directory consentita
+	allowed := false
+	for _, cat := range config.LogCategories {
+		for _, dir := range cat.Directories {
+			cleanDir := filepath.Clean(dir)
+			// Confronta i percorsi in modo case-insensitive? No, ma su Windows è case-insensitive.
+			if strings.HasPrefix(strings.ToLower(cleanPath), strings.ToLower(cleanDir)) {
+				allowed = true
+				break
+			}
+		}
+	}
+	if !allowed {
+		log.Printf("Accesso negato: percorso %q non consentito", cleanPath)
+		http.Error(w, "Accesso negato", http.StatusForbidden)
+		return
+	}
+
+	// Elimina il file
+	if err := os.Remove(cleanPath); err != nil {
+		log.Printf("Errore eliminazione file %s: %v", cleanPath, err)
+		http.Error(w, "Errore eliminazione file", http.StatusInternalServerError)
+		return
+	}
+
+	WriteAuditLog("LOG_DELETE", username, fmt.Sprintf("eliminato file log %s", cleanPath))
+	w.WriteHeader(http.StatusOK)
+}
 func getCategoriesList() []string {
 	cats := []string{"all"}
 	for _, cat := range config.LogCategories {

@@ -23,21 +23,60 @@
     </div>
 </div>
 
+<!-- Configurazione corrente (se presente) -->
+{{if .CurrentConfigFile.Name}}
+<div class="card-modern" style="margin-bottom: 1.5rem;">
+    <div class="card-header">📄 Configurazione corrente</div>
+    <div class="card-body">
+        <table style="width:100%; table-layout: fixed;">
+            <colgroup>
+                <col style="width: 40%;">
+                <col style="width: 25%;">
+                <col style="width: 20%;">
+                <col style="width: 15%;">
+            </colgroup>
+            <thead>
+                <tr><th>Nome file</th><th>Data modifica</th><th>Dimensione</th><th>Azioni</th></tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td>{{.CurrentConfigFile.Name}}</td>
+                    <td>{{.CurrentConfigFile.ModTime}}</td>
+                    <td>{{.CurrentConfigFile.Size}}</td>
+                    <td><a href="/config-current/download">📥 Scarica</a></td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}
+
 <div class="card-modern">
-    <div class="card-header">File disponibili ({{len .Files}})</div>
+    <div class="card-header">File backup configurazione disponibili ({{len .Files}})</div>
     <div class="card-body">
         {{if .Files}}
-        <table style="width:100%">
+        <table style="width:100%; table-layout: fixed;">
+            <colgroup>
+                <col style="width: 40%;">
+                <col style="width: 25%;">
+                <col style="width: 20%;">
+                <col style="width: 15%;">
+            </colgroup>
             <thead>
                 <tr><th>Nome file</th><th>Data modifica</th><th>Dimensione</th><th>Azioni</th></tr>
             </thead>
             <tbody>
                 {{range .Files}}
                 <tr>
-                    <td><strong>{{.Name}}</strong></td>
+                    <td>{{.Name}}</td>
                     <td>{{.ModTime}}</td>
                     <td>{{.Size}}</td>
-                    <td><a href="/config-history/download/{{.Name}}" style="text-decoration: none;">📥 Scarica</a></td>
+                    <td>
+                        <a href="/config-history/download/{{.Name}}">📥 Scarica</a>
+                        {{if $.IsAdmin}}
+                        | <a href="#" onclick="confirmDelete('{{.Name}}')" style="color:#dc3545;">🗑️ Elimina</a>
+                        {{end}}
+                    </td>
                 </tr>
                 {{end}}
             </tbody>
@@ -48,4 +87,20 @@
         {{end}}
     </div>
 </div>
+
+<script>
+function confirmDelete(filename) {
+    if (confirm('Sei sicuro di voler eliminare il file ' + filename + '?')) {
+        fetch('/config-history/delete/' + encodeURIComponent(filename), {
+            method: 'DELETE'
+        }).then(response => {
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Errore durante l\'eliminazione');
+            }
+        }).catch(err => alert('Errore di rete'));
+    }
+}
+</script>
 {{end}}

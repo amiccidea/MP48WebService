@@ -10,6 +10,13 @@ import (
 	"time"
 )
 
+// Struttura per i dati del file corrente
+type CurrentFileInfo struct {
+	Name    string
+	ModTime string
+	Size    string
+}
+
 func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	username, isAdmin := getUserContext(r)
 	perms := getUserPermissions(username)
@@ -82,26 +89,54 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(files, func(i, j int) bool {
 		return files[i].ModTimeRaw.After(files[j].ModTimeRaw)
 	})
+
+	// --- Configurazione corrente (dati completi) ---
+	type CurrentFileInfo struct {
+		Name    string
+		ModTime string
+		Size    string
+	}
+	currentFile := CurrentFileInfo{}
+	if config.CurrentConfigurationDir != "" {
+		dirEntries, err := os.ReadDir(config.CurrentConfigurationDir)
+		if err == nil {
+			for _, entry := range dirEntries {
+				if !entry.IsDir() {
+					if info, err := entry.Info(); err == nil {
+						currentFile = CurrentFileInfo{
+							Name:    entry.Name(),
+							ModTime: info.ModTime().Format("2006-01-02 15:04:05"),
+							Size:    formatFileSize(info.Size()),
+						}
+					}
+					break // prende solo il primo file
+				}
+			}
+		}
+	}
+
 	data := struct {
-		Username        string
-		IsAdmin         bool
-		Title           string
-		ContentTemplate string
-		Files           []FileInfo
-		StartDate       string
-		EndDate         string
-		Extensions      []string
-		Permissions     map[string]bool
+		Username          string
+		IsAdmin           bool
+		Title             string
+		ContentTemplate   string
+		Files             []FileInfo
+		StartDate         string
+		EndDate           string
+		Extensions        []string
+		Permissions       map[string]bool
+		CurrentConfigFile CurrentFileInfo
 	}{
-		Username:        username,
-		IsAdmin:         isAdmin,
-		Title:           "Storico Configurazioni",
-		ContentTemplate: "configHistoryContent",
-		Files:           files,
-		StartDate:       startDate,
-		EndDate:         endDate,
-		Extensions:      extensions,
-		Permissions:     perms,
+		Username:          username,
+		IsAdmin:           isAdmin,
+		Title:             "Storico Configurazioni",
+		ContentTemplate:   "configHistoryContent",
+		Files:             files,
+		StartDate:         startDate,
+		EndDate:           endDate,
+		Extensions:        extensions,
+		Permissions:       perms,
+		CurrentConfigFile: currentFile,
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }
@@ -130,4 +165,58 @@ func configHistoryDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	http.ServeFile(w, r, filePath)
+}
+
+func configCurrentDownloadHandler(w http.ResponseWriter, r *http.Request) {
+	if config.CurrentConfigurationDir == "" {
+		http.Error(w, "Directory configurazione corrente non configurata", http.StatusNotFound)
+		return
+	}
+	entries, err := os.ReadDir(config.CurrentConfigurationDir)
+	if err != nil || len(entries) == 0 {
+		http.Error(w, "Nessun file di configurazione corrente trovato", http.StatusNotFound)
+		return
+	}
+	// Prende il primo file (si assume un solo file)
+	filename := entries[0].Name()
+	filePath := filepath.Join(config.CurrentConfigurationDir, filename)
+	info, err := os.Stat(filePath)
+	if err != nil {
+		http.Error(w, "Errore lettura file", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+filename+"\"")
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
+	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+	http.ServeFile(w, r, filePath)
+}
+
+func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	// Estrae il nome del file dall'URL
+	filename := strings.TrimPrefix(r.URL.Path, "/config-history/delete/")
+	if filename == "" {
+		http.Error(w, "Nome file mancante", http.StatusBadRequest)
+		return
+	}
+	// Protegge da path traversal (es. ../)
+	if strings.Contains(filename, "..") {
+		http.Error(w, "Percorso non valido", http.StatusBadRequest)
+		return
+	}
+	filePath := filepath.Join(config.ConfigHistoryDir, filename)
+	// Verifica che il file esista
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		http.Error(w, "File non trovato", http.StatusNotFound)
+		return
+	}
+	// Elimina il file
+	if err := os.Remove(filePath); err != nil {
+		http.Error(w, "Errore durante l'eliminazione", http.StatusInternalServerError)
+		return
+	}
+	// Log dell'operazione
+	username, _ := getUserContext(r)
+	WriteAuditLog("CONFIG_DELETE", username, filename)
+	w.WriteHeader(http.StatusOK)
 }

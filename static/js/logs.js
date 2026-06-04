@@ -7,13 +7,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const paginationDiv = document.getElementById('pagination');
     const resetBtn = document.getElementById('resetFiltersBtn');
 
-    let currentFilters = {
-        category: 'all',
-        start_date: '',
-        end_date: ''
-    };
+    let currentFilters = { category: 'all', start_date: '', end_date: '' };
     let currentPage = 1;
     let totalPages = 1;
+    let isAdmin = false;
     const pageSize = 50;
 
     function escapeHtml(str) {
@@ -40,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     });
                 }
             })
-            .catch(err => console.error('Errore caricamento categorie:', err));
+            .catch(err => console.error('Errore categorie:', err));
     }
 
     function loadLogs(page) {
@@ -51,13 +48,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         tbody.innerHTML = '<tr><td colspan="5">Caricamento...</td></tr>';
         fetch(url)
-            .then(response => {
-                if (!response.ok) throw new Error(`HTTP ${response.status}`);
-                return response.json();
-            })
+            .then(res => res.json())
             .then(data => {
                 const logs = data.logs;
                 totalPages = data.totalPages;
+                isAdmin = data.isAdmin;
                 if (!logs || logs.length === 0) {
                     tbody.innerHTML = '<tr><td colspan="5">Nessun log trovato</td></tr>';
                     renderPagination();
@@ -68,18 +63,43 @@ document.addEventListener('DOMContentLoaded', () => {
                     html += `
                         <tr>
                             <td>${escapeHtml(log.category)}</td>
-                            <td><strong>${escapeHtml(log.name)}</strong><br><small style="color:#666;">${escapeHtml(log.path)}</small></td>
+                            <td><strong>${escapeHtml(log.name)}</strong><br><small>${escapeHtml(log.path)}</small></td>
                             <td>${escapeHtml(log.size)}</td>
                             <td>${escapeHtml(log.mod_time)}</td>
-                            <td><a href="/logs/download?path=${encodeURIComponent(log.path)}">📥 Scarica</a></td>
+                            <td>
+                                <a href="/logs/download?path=${encodeURIComponent(log.path)}">📥 Scarica</a>
+                                ${isAdmin ? ` <button class="delete-log-btn" data-path="${encodeURIComponent(log.path)}">🗑️ Elimina</button>` : ''}
+                            </td>
                         </tr>
                     `;
                 });
                 tbody.innerHTML = html;
+                if (isAdmin) {
+                    document.querySelectorAll('.delete-log-btn').forEach(btn => {
+                        btn.addEventListener('click', (e) => {
+                            const encodedPath = btn.dataset.path;
+                            const path = decodeURIComponent(encodedPath);
+                            if (confirm('Sei sicuro di voler eliminare questo file di log?')) {
+                                fetch('/logs/delete', {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                    body: 'path=' + encodeURIComponent(path)
+                                }).then(resp => {
+                                    if (resp.ok) {
+                                        alert('File eliminato');
+                                        loadLogs(currentPage);
+                                    } else {
+                                        alert('Errore durante l\'eliminazione');
+                                    }
+                                }).catch(err => alert('Errore di rete'));
+                            }
+                        });
+                    });
+                }
                 renderPagination();
             })
             .catch(err => {
-                console.error('Errore caricamento log:', err);
+                console.error(err);
                 tbody.innerHTML = '<tr><td colspan="5">❌ Errore nel caricamento dei log</td></tr>';
             });
     }
@@ -96,7 +116,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         for (let i = 1; i <= totalPages; i++) {
             if (i === currentPage) {
-                html += `<button disabled style="background: #0070c0; color: white; cursor: default;">${i}</button>`;
+                html += `<button disabled style="background: #0070c0; color: white;">${i}</button>`;
             } else if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
                 html += `<button onclick="window.loadPage(${i})">${i}</button>`;
             } else if (i === currentPage - 3 || i === currentPage + 3) {
@@ -111,9 +131,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     window.loadPage = function(page) {
-        if (page >= 1 && page <= totalPages) {
-            loadLogs(page);
-        }
+        if (page >= 1 && page <= totalPages) loadLogs(page);
     };
 
     if (form) {
@@ -127,22 +145,16 @@ document.addEventListener('DOMContentLoaded', () => {
             loadLogs(1);
         });
     }
-
     if (resetBtn) {
         resetBtn.addEventListener('click', () => {
             categorySelect.value = 'all';
             startDateInput.value = '';
             endDateInput.value = '';
-            currentFilters = {
-                category: 'all',
-                start_date: '',
-                end_date: ''
-            };
+            currentFilters = { category: 'all', start_date: '', end_date: '' };
             loadLogs(1);
         });
     }
 
     loadCategories();
-    currentFilters = { category: 'all', start_date: '', end_date: '' };
     loadLogs(1);
 });
