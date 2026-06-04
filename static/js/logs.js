@@ -68,7 +68,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <td>${escapeHtml(log.mod_time)}</td>
                             <td>
                                 <a href="/logs/download?path=${encodeURIComponent(log.path)}">📥 Scarica</a>
-                                ${isAdmin ? ` <button class="delete-log-btn" data-path="${encodeURIComponent(log.path)}">🗑️ Elimina</button>` : ''}
+                                ${isAdmin ? ` <br/> <a href="#" class="delete-log-btn" data-path="${encodeURIComponent(log.path)}">🗑️ Elimina</a>` : ''}
                             </td>
                         </tr>
                     `;
@@ -77,6 +77,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (isAdmin) {
                     document.querySelectorAll('.delete-log-btn').forEach(btn => {
                         btn.addEventListener('click', (e) => {
+                            e.preventDefault();
                             const encodedPath = btn.dataset.path;
                             const path = decodeURIComponent(encodedPath);
                             if (confirm('Sei sicuro di voler eliminare questo file di log?')) {
