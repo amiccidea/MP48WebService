@@ -272,7 +272,7 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Crea un backup della configurazione corrente prima di sovrascriverla
 	timestamp := time.Now().Format("20060102_150405")
-	backupName := fmt.Sprintf("config_%s_backup_%s.rcd", strings.TrimSuffix(entries[0].Name(), filepath.Ext(entries[0].Name())), timestamp)
+	backupName := fmt.Sprintf("%s_backup_%s.rcd", strings.TrimSuffix(entries[0].Name(), filepath.Ext(entries[0].Name())), timestamp)
 	backupCopyPath := filepath.Join(config.ConfigHistoryDir, backupName)
 	if err := copyFile(currentConfigPath, backupCopyPath); err != nil {
 		log.Printf("Errore backup configurazione corrente: %v", err)
