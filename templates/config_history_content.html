@@ -30,10 +30,10 @@
     <div class="card-body">
         <table style="width:100%; table-layout: fixed;">
             <colgroup>
-                <col style="width: 40%;">
-                <col style="width: 25%;">
+                <col style="width: 35%;">
                 <col style="width: 20%;">
                 <col style="width: 15%;">
+                <col style="width: 30%;">
             </colgroup>
             <thead>
                 <tr><th>Nome file</th><th>Data modifica</th><th>Dimensione</th><th>Azioni</th></tr>
@@ -57,10 +57,10 @@
         {{if .Files}}
         <table style="width:100%; table-layout: fixed;">
             <colgroup>
-                <col style="width: 40%;">
-                <col style="width: 25%;">
+                <col style="width: 35%;">
                 <col style="width: 20%;">
                 <col style="width: 15%;">
+                <col style="width: 30%;">
             </colgroup>
             <thead>
                 <tr><th>Nome file</th><th>Data modifica</th><th>Dimensione</th><th>Azioni</th></tr>
@@ -75,6 +75,7 @@
                         <a href="/config-history/download/{{.Name}}">📥 Scarica</a>
                         {{if $.IsAdmin}}
                         | <a href="#" onclick="confirmDelete('{{.Name}}')" style="color:#dc3545;">🗑️ Elimina</a>
+                        | <a href="#" onclick="confirmRestore('{{.Name}}')" style="color:#28a745;">🔄 Ripristina</a>
                         {{end}}
                     </td>
                 </tr>
@@ -82,8 +83,7 @@
             </tbody>
         </table>
         {{else}}
-        <p>Nessun file trovato con estensioni {{range $i, $ext := .Extensions}}{{if $i}}, {{end}}{{$ext}}{{end}} 
-        {{if or .StartDate .EndDate}}per l'intervallo selezionato{{end}}.</p>
+        <p>Nessun file trovato con estensioni ...</p>
         {{end}}
     </div>
 </div>
@@ -102,5 +102,20 @@ function confirmDelete(filename) {
         }).catch(err => alert('Errore di rete'));
     }
 }
+function confirmRestore(filename) {
+    if (confirm('⚠️ Attenzione: ripristinare questo file sovrascriverà la configurazione corrente. Un backup automatico della configurazione attuale verrà creato nella cartella degli storici. Procedere?')) {
+        fetch('/config-history/restore/' + encodeURIComponent(filename), {
+            method: 'POST'
+        }).then(response => {
+            if (response.ok) {
+                alert('Configurazione ripristinata con successo. Pagina verrà ricaricata.');
+                window.location.reload();
+            } else {
+                alert('Errore durante il ripristino');
+            }
+        }).catch(err => alert('Errore di rete'));
+    }
+}
+</script>
 </script>
 {{end}}

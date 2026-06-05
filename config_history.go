@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -219,4 +222,91 @@ func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	username, _ := getUserContext(r)
 	WriteAuditLog("CONFIG_DELETE", username, filename)
 	w.WriteHeader(http.StatusOK)
+}
+
+// configHistoryRestoreHandler gestisce il ripristino di un backup
+func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Solo admin
+	_, isAdmin := getUserContext(r)
+	if !isAdmin {
+		http.Error(w, "Accesso negato", http.StatusForbidden)
+		return
+	}
+
+	// Estrai il nome del file dall'URL
+	filename := strings.TrimPrefix(r.URL.Path, "/config-history/restore/")
+	if filename == "" {
+		http.Error(w, "Nome file mancante", http.StatusBadRequest)
+		return
+	}
+	backupPath := filepath.Join(config.ConfigHistoryDir, filename)
+
+	// Verifica che il file di backup esista
+	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+		http.Error(w, "File di backup non trovato", http.StatusNotFound)
+		return
+	}
+
+	// Verifica che la directory della configurazione corrente sia configurata
+	if config.CurrentConfigurationDir == "" {
+		http.Error(w, "Directory configurazione corrente non configurata", http.StatusInternalServerError)
+		return
+	}
+
+	// Trova il file di configurazione corrente (supponendo un solo file nella directory)
+	entries, err := os.ReadDir(config.CurrentConfigurationDir)
+	if err != nil {
+		http.Error(w, "Errore lettura directory corrente", http.StatusInternalServerError)
+		return
+	}
+	if len(entries) == 0 {
+		http.Error(w, "Nessun file di configurazione corrente trovato", http.StatusNotFound)
+		return
+	}
+	currentConfigPath := filepath.Join(config.CurrentConfigurationDir, entries[0].Name())
+
+	// Crea un backup della configurazione corrente prima di sovrascriverla
+	timestamp := time.Now().Format("20060102_150405")
+	backupName := fmt.Sprintf("config_%s_backup_%s.rcd", strings.TrimSuffix(entries[0].Name(), filepath.Ext(entries[0].Name())), timestamp)
+	backupCopyPath := filepath.Join(config.ConfigHistoryDir, backupName)
+	if err := copyFile(currentConfigPath, backupCopyPath); err != nil {
+		log.Printf("Errore backup configurazione corrente: %v", err)
+		http.Error(w, "Errore durante il backup della configurazione corrente", http.StatusInternalServerError)
+		return
+	}
+
+	// Sovrascrive la configurazione corrente con il backup selezionato
+	if err := copyFile(backupPath, currentConfigPath); err != nil {
+		log.Printf("Errore ripristino file: %v", err)
+		http.Error(w, "Errore durante il ripristino", http.StatusInternalServerError)
+		return
+	}
+
+	// Log dell'operazione
+	username, _ := getUserContext(r)
+	WriteAuditLog("CONFIG_RESTORE", username, fmt.Sprintf("ripristinato backup %s come configurazione corrente (backup automatico creato: %s)", filename, backupName))
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OK"))
+}
+
+// copyFile copia un file da src a dst
+func copyFile(src, dst string) error {
+	source, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	destination, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer destination.Close()
+	_, err = io.Copy(destination, source)
+	return err
 }
