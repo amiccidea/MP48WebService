@@ -91,7 +91,7 @@ func main() {
 	//unlock utente bloccato
 	http.HandleFunc("/admin/users/unlock", authMiddleware(adminMiddleware(adminUserUnlock)))
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "/dashboard", http.StatusFound)
+		http.Redirect(w, r, "/alarms", http.StatusFound)
 	})
 
 	log.Printf("Server avviato su http://localhost:%s", config.Port)

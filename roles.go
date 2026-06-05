@@ -50,14 +50,14 @@ var roles = []*Role{
 
 func getAllPermissions() []string {
 	return []string{
-		"dashboard", "logs", "machine_status", "config_history",
+		"alarms", "logs", "machine_status", "config_history",
 		"config_upload", "admin_users", "admin_roles", "admin_settings",
 	}
 }
 
 func permissionLabel(p string) string {
 	labels := map[string]string{
-		"dashboard": "Dashboard", "logs": "Scarica log",
+		"alarms": "Allarmi", "logs": "Scarica log",
 		"machine_status": "Stato macchina e mirror",
 		"config_history": "Storico configurazioni",
 		"config_upload":  "Carica impostazioni",

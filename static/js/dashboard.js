@@ -1,6 +1,6 @@
 async function fetchSystemInfo() {
     try {
-        const response = await fetch('/api/dashboard');
+        const response = await fetch('/api/alarms');
         if (!response.ok) {
             if (response.status === 401) window.location.href = '/login';
             throw new Error('Errore nel recupero dati');

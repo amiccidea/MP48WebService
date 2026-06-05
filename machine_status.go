@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -16,8 +17,20 @@ type InterfaceInfo struct {
 	Gateway string
 }
 
+// MachineInfo contiene le informazioni lette da info.txt e version.txt
+type MachineInfo struct {
+	// Da info.txt
+	DeviceType      string
+	MP48Number      string
+	ConfigName      string
+	ConfigDate      string
+	ConfiguratorVer string
+	Operator        string
+	// Da version.txt (mappa)
+	Firmware map[string]string
+}
+
 // GetNetworkInterfaces legge il file di configurazione delle interfacce
-// e restituisce una slice con le informazioni per eth0, eth1, eth2
 func GetNetworkInterfaces() ([]InterfaceInfo, error) {
 	if config.NetworkInterfacesFile == "" {
 		return []InterfaceInfo{}, nil
@@ -43,8 +56,7 @@ func GetNetworkInterfaces() ([]InterfaceInfo, error) {
 		}
 		switch fields[0] {
 		case "auto", "iface":
-			// Per semplicità, cerchiamo le righe "iface ethX inet static"
-			if len(fields) >= 4 && fields[1] == "eth0" || fields[1] == "eth1" || fields[1] == "eth2" {
+			if len(fields) >= 4 && (fields[1] == "eth0" || fields[1] == "eth1" || fields[1] == "eth2") {
 				current = InterfaceInfo{Name: fields[1]}
 			}
 		case "address":
@@ -53,29 +65,103 @@ func GetNetworkInterfaces() ([]InterfaceInfo, error) {
 			current.Netmask = fields[1]
 		case "gateway":
 			current.Gateway = fields[1]
-			// Quando troviamo gateway, l'interfaccia è completa
 			if current.Name != "" {
 				interfaces = append(interfaces, current)
 				current = InterfaceInfo{}
 			}
 		}
 	}
-	// Se l'ultima interfaccia non aveva gateway (forse solo address+netmask), aggiungila comunque
 	if current.Name != "" && current.Address != "" {
 		interfaces = append(interfaces, current)
 	}
 	return interfaces, scanner.Err()
 }
 
+// GetMachineInfo legge i file nella directory config.InfoVersionDescDir
+func GetMachineInfo() (*MachineInfo, error) {
+	if config.InfoVersionDescDir == "" {
+		return nil, nil
+	}
+	info := &MachineInfo{Firmware: make(map[string]string)}
+	// Legge info.txt
+	infoPath := filepath.Join(config.InfoVersionDescDir, "info.txt")
+	if err := parseInfoFile(infoPath, info); err != nil {
+		log.Printf("Errore lettura info.txt: %v", err)
+	}
+	// Legge version.txt
+	versionPath := filepath.Join(config.InfoVersionDescDir, "version.txt")
+	if err := parseVersionFile(versionPath, info); err != nil {
+		log.Printf("Errore lettura version.txt: %v", err)
+	}
+	return info, nil
+}
+
+func parseInfoFile(path string, info *MachineInfo) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "---") {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(line, "DEVICE TYPE:"):
+			info.DeviceType = strings.TrimSpace(strings.TrimPrefix(line, "DEVICE TYPE:"))
+		case strings.HasPrefix(line, "MP48 NUMBER:"):
+			info.MP48Number = strings.TrimSpace(strings.TrimPrefix(line, "MP48 NUMBER:"))
+		case strings.HasPrefix(line, "configuration name:"):
+			info.ConfigName = strings.TrimSpace(strings.TrimPrefix(line, "configuration name:"))
+		case strings.HasPrefix(line, "configuration date:"):
+			info.ConfigDate = strings.TrimSpace(strings.TrimPrefix(line, "configuration date:"))
+		case strings.HasPrefix(line, "configurator version:"):
+			info.ConfiguratorVer = strings.TrimSpace(strings.TrimPrefix(line, "configurator version:"))
+		case strings.HasPrefix(line, "operator:"):
+			info.Operator = strings.TrimSpace(strings.TrimPrefix(line, "operator:"))
+		}
+	}
+	return scanner.Err()
+}
+
+func parseVersionFile(path string, info *MachineInfo) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "---") {
+			continue
+		}
+		if strings.Contains(line, "version:") {
+			parts := strings.SplitN(line, "version:", 2)
+			key := strings.TrimSpace(parts[0])
+			val := strings.TrimSpace(parts[1])
+			info.Firmware[key] = val
+		}
+	}
+	return scanner.Err()
+}
+
 func machineStatusHandler(w http.ResponseWriter, r *http.Request) {
 	username, isAdmin := getUserContext(r)
 	perms := getUserPermissions(username)
 
-	// Recupera le interfacce di rete
 	interfaces, err := GetNetworkInterfaces()
 	if err != nil {
-		log.Printf("Errore lettura interfacce di rete: %v", err)
+		log.Printf("Errore lettura interfacce: %v", err)
 		interfaces = []InterfaceInfo{}
+	}
+
+	machineInfo, err := GetMachineInfo()
+	if err != nil {
+		log.Printf("Errore lettura info macchina: %v", err)
+		machineInfo = nil
 	}
 
 	data := struct {
@@ -86,14 +172,16 @@ func machineStatusHandler(w http.ResponseWriter, r *http.Request) {
 		Status          string
 		Permissions     map[string]bool
 		Interfaces      []InterfaceInfo
+		MachineInfo     *MachineInfo // <-- aggiunto
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
-		Title:           "Stato Macchina",
+		Title:           "Info CPUs",
 		ContentTemplate: "machineStatusContent",
-		Status:          "Macchina operativa, mirror sincronizzato",
+		Status:          "Informazioni sulla macchina e stato delle interfacce di rete",
 		Permissions:     perms,
 		Interfaces:      interfaces,
+		MachineInfo:     machineInfo, // <-- aggiunto
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

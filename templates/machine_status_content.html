@@ -1,5 +1,5 @@
 {{define "machineStatusContent"}}
-<h1>🖥️ Stato macchina e mirror</h1>
+<h1>🖥️ Info CPUs</h1>
 <div class="dashboard-grid">
     <div class="card-modern">
         <div class="card-header">Macchina principale</div>
@@ -21,6 +21,36 @@
         </div>
     </div>
 </div>
+
+<!-- Info macchina (se disponibili) -->
+{{if .MachineInfo}}
+<div class="card-modern" style="margin-top: 1.5rem;">
+    <div class="card-header">📋 Informazioni sistema</div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+            <div>
+                <h3 style="margin-bottom: 0.5rem;">Configurazione</h3>
+                <ul class="info-list">
+                    <li><strong>Device Type:</strong> {{.MachineInfo.DeviceType}}</li>
+                    <li><strong>MP48 Number:</strong> {{.MachineInfo.MP48Number}}</li>
+                    <li><strong>Config Name:</strong> {{.MachineInfo.ConfigName}}</li>
+                    <li><strong>Config Date:</strong> {{.MachineInfo.ConfigDate}}</li>
+                    <li><strong>Configurator Ver:</strong> {{.MachineInfo.ConfiguratorVer}}</li>
+                    <li><strong>Operator:</strong> {{.MachineInfo.Operator}}</li>
+                </ul>
+            </div>
+            <div>
+                <h3 style="margin-bottom: 0.5rem;">Versioni firmware</h3>
+                <ul class="info-list">
+                    {{range $key, $val := .MachineInfo.Firmware}}
+                    <li><strong>{{$key}}:</strong> {{$val}}</li>
+                    {{end}}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
 
 <!-- Sezione configurazione di rete -->
 <div class="card-modern" style="margin-top: 1.5rem;">

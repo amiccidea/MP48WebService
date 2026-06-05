@@ -281,7 +281,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		session.Save(r, w)
 		log.Printf("Login riuscito per %s (admin=%v)", username, u.Role == RoleAdmin)
 		WriteAuditLog("login_success", username, "Login riuscito")
-		http.Redirect(w, r, "/dashboard", http.StatusFound)
+		http.Redirect(w, r, "/alarms", http.StatusFound)
 		return
 	}
 
@@ -384,7 +384,7 @@ func changePasswordPost(w http.ResponseWriter, r *http.Request) {
 	session.Values["username"] = username
 	session.Values["is_admin"] = (u.Role == RoleAdmin)
 	session.Save(r, w)
-	http.Redirect(w, r, "/dashboard", http.StatusFound)
+	http.Redirect(w, r, "/alarms", http.StatusFound)
 }
 
 func profileChangePasswordPage(w http.ResponseWriter, r *http.Request) {
@@ -473,5 +473,5 @@ func profileChangePasswordPost(w http.ResponseWriter, r *http.Request) {
 	session.Values["username"] = username
 	session.Values["is_admin"] = isAdmin
 	session.Save(r, w)
-	http.Redirect(w, r, "/dashboard", http.StatusFound)
+	http.Redirect(w, r, "/alarms", http.StatusFound)
 }

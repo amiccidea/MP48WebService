@@ -38,6 +38,7 @@ type Config struct {
 	AnalogInputsCmd         string        `json:"analog_inputs_cmd"`
 	AnalogInputsDescFile    string        `json:"analog_inputs_desc_file"`
 	AnalogInputsDescBase    string        `json:"analog_inputs_desc_base"`
+	InfoVersionDescDir      string        `json:"info_version_desc_file"`
 }
 
 func initConfig() {
