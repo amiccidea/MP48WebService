@@ -3,9 +3,11 @@
 <div class="card-modern">
     <div class="card-header">Nuova configurazione</div>
     <div class="card-body">
-        {{if .Message}}<div style="background:#dcfce7; padding:0.5rem; margin-bottom:1rem;">✅ {{.Message}}</div>{{end}}
+        {{if .Message}}<div class="message-success">✅ {{.Message}}</div>{{end}}
         <form id="uploadForm" method="POST" enctype="multipart/form-data">
-            <input type="file" name="configfile" id="configfile" required accept=".rdc,.rcd,.cfg,.conf,.json"><br><br>
+            <label for="configfile" class="form-label">File di configurazione (formati accettati: .rdc, .rcd, .cfg, .conf, .json)</label>
+            <input type="file" name="configfile" id="configfile" required accept=".rdc,.rcd,.cfg,.conf,.json">
+            <br><br>
             <button type="submit">Carica</button>
         </form>
     </div>

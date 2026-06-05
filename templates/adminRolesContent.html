@@ -35,7 +35,7 @@
 </div>
 
 <script>
-    const rolesData = {{.RolesJSON}};
+    const rolesData = JSON.parse(`{{.RolesJSON}}`);
     const allPermissions = [
         "alarms", "logs", "machine_status", "config_history",
         "config_upload", "analog_inputs", "admin_users", "admin_roles", "admin_settings"

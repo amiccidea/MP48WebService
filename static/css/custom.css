@@ -275,3 +275,12 @@ td {
     margin: 0 auto;
     display: block;
 }
+.message-success {
+    background: #dcfce7;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+}
+.form-label {
+    display: block;
+    margin-bottom: 0.5rem;
+}

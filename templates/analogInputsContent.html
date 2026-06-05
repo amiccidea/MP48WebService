@@ -44,7 +44,7 @@
     </div>
 </div>
 <script>
-    let currentCPU = {{.CPU}};
+    let currentCPU = JSON.parse(`{{.CPU}}`);
     let refreshInterval = null;
 
     function loadAnalogData() {
