@@ -93,7 +93,7 @@ func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/alarms", http.StatusFound)
 	})
-
+	http.HandleFunc("/api/reboot", authMiddleware(adminMiddleware(rebootHandler)))
 	log.Printf("Server avviato su http://localhost:%s", config.Port)
 	log.Fatal(http.ListenAndServe(":"+config.Port, nil))
 }

@@ -127,6 +127,11 @@
             </li>
             {{end}}
             {{end}}
+            {{if .IsAdmin}}
+            <li class="nav-item">
+                <a href="#" id="rebootLink" class="nav-link"><span class="icon">🔄</span> Reboot sistema</a>
+            </li>
+            {{end}}
         </ul>
         <div class="sidebar-footer">
             <span class="icon">👤</span> {{.Username}}<br>
@@ -179,6 +184,24 @@
             });
             window.addEventListener('resize', update);
         })();
+
+        const rebootLink = document.getElementById('rebootLink');
+        if (rebootLink) {
+            rebootLink.addEventListener('click', function(e) {
+                e.preventDefault();
+                if (confirm('⚠️ ATTENZIONE: il riavvio del sistema potrebbe interrompere il funzionamento dell\'RTU per alcuni minuti. Sei sicuro?')) {
+                    fetch('/api/reboot', { method: 'POST' })
+                        .then(res => {
+                            if (res.ok) {
+                                alert('Reboot avviato. La pagina potrebbe non rispondere momentaneamente.');
+                            } else {
+                                alert('Errore durante il reboot: ' + res.status);
+                            }
+                        })
+                        .catch(err => alert('Errore di rete: ' + err));
+                }
+            });
+        }
     </script>
 </body>
 </html>
