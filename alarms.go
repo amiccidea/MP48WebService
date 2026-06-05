@@ -2,26 +2,22 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 )
 
-func dashboardHandler(w http.ResponseWriter, r *http.Request) {
+func alarmsHandler(w http.ResponseWriter, r *http.Request) {
 	username, isAdmin := getUserContext(r)
 	if username == "" {
 		http.Redirect(w, r, "/logout", http.StatusFound)
 		return
 	}
 	perms := getUserPermissions(username)
-
-	// Recupera i dati dei segnali (posizioni, misure, comandi, setpoint, warning, allarmi)
 	signals, err := GetSignalsData()
 	if err != nil {
 		log.Printf("Errore recupero segnali: %v", err)
-		signals = &SignalsData{} // vuoto per evitare nil nel template
+		signals = &SignalsData{}
 	}
-
 	data := struct {
 		Username        string
 		IsAdmin         bool
@@ -32,20 +28,15 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
-		Title:           "Dashboard",
-		ContentTemplate: "dashboardContent",
+		Title:           "Allarmi",       // o "Alarms"
+		ContentTemplate: "alarmsContent", // o "alarmsContent" se rinominato
 		Permissions:     perms,
 		Signals:         signals,
 	}
-
-	err = tmpl.ExecuteTemplate(w, "layout.html", data)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Errore nel template: %v", err), http.StatusInternalServerError)
-		log.Printf("Errore ExecuteTemplate: %v", err)
-		WriteAuditLog("dashboard_access", username, "Errore all'accesso alla dashboard: "+err.Error())
-	}
+	tmpl.ExecuteTemplate(w, "layout.html", data)
 }
-func apiDashboardHandler(w http.ResponseWriter, r *http.Request) {
+
+func apiAlarmsHandler(w http.ResponseWriter, r *http.Request) {
 	session, err := store.Get(r, "portal-session")
 	if err != nil || session.Values["authenticated"] != true {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)

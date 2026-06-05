@@ -8,6 +8,7 @@ import (
 
 const (
 	PermDashboard     string = "dashboard"
+	PermAlarms        string = "alarms"
 	PermLogs          string = "logs"
 	PermMachineStatus string = "machine_status"
 	PermConfigHistory string = "config_history"
@@ -15,6 +16,7 @@ const (
 	PermAdminUsers    string = "admin_users"
 	PermAdminRoles    string = "admin_roles"
 	PermAdminSettings string = "admin_settings"
+	PermAnalogInputs  string = "analog_inputs"
 )
 
 // hasPermission verifica se l'utente corrente ha il permesso richiesto

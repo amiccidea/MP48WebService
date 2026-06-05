@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"html/template"
+	"log"
 	"net/http"
 	"strings"
 )
@@ -12,24 +13,37 @@ var roles = []*Role{
 		ID:   "user",
 		Name: "Utente",
 		Permissions: map[string]bool{
-			"dashboard": true, "logs": true, "machine_status": true,
+			"alarms":         true, // ex dashboard
+			"logs":           true,
+			"machine_status": true,
+			// analog_inputs: false (non lo vede)
 		},
 	},
 	{
 		ID:   "tech",
 		Name: "Operatore Tecnico",
 		Permissions: map[string]bool{
-			"dashboard": true, "logs": true, "machine_status": true,
-			"config_history": true, "config_upload": true,
+			"alarms":         true,
+			"logs":           true,
+			"machine_status": true,
+			"config_history": true,
+			"config_upload":  true,
+			"analog_inputs":  true, // nuovo
 		},
 	},
 	{
 		ID:   "admin",
 		Name: "Amministratore",
 		Permissions: map[string]bool{
-			"dashboard": true, "logs": true, "machine_status": true,
-			"config_history": true, "config_upload": true,
-			"admin_users": true, "admin_roles": true, "admin_settings": true,
+			"alarms":         true,
+			"logs":           true,
+			"machine_status": true,
+			"config_history": true,
+			"config_upload":  true,
+			"admin_users":    true,
+			"admin_roles":    true,
+			"admin_settings": true,
+			"analog_inputs":  true, // nuovo
 		},
 	},
 }
@@ -193,18 +207,16 @@ func adminRolesUpdate(w http.ResponseWriter, r *http.Request) {
 func getUserPermissions(username string) map[string]bool {
 	u := getUserByUsername(username)
 	if u == nil {
+		log.Printf("getUserPermissions: utente %s non trovato", username)
 		return map[string]bool{}
 	}
 	for _, r := range roles {
 		if r.ID == string(u.Role) {
-			// converte la mappa da map[string]bool a map[string]bool
-			perms := make(map[string]bool)
-			for k, v := range r.Permissions {
-				perms[string(k)] = v
-			}
-			return perms
+			//log.Printf("Permessi per %s (ruolo %s): %v", username, r.ID, r.Permissions)
+			return r.Permissions
 		}
 	}
+	log.Printf("Ruolo non trovato per %s", username)
 	return map[string]bool{}
 }
 

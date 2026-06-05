@@ -29,5 +29,7 @@
     "audit_log_dir": "C:\\test\\LogAppMp48",
     "cf_web_file": "C:\\test\\cfweb\\cf_web.txt",
     "points_cmd": "rsl_smm -p",
-    "network_interfaces_file": "C:\\test\\etcnetwork\\interfaces"
+    "network_interfaces_file": "C:\\test\\etcnetwork\\interfaces",
+    "analog_inputs_cmd": "rsl_smm",
+    "analog_inputs_desc_file": "C:\\test\\etcrtu\\cf_%d_104_c.conf"
 }

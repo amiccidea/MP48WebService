@@ -27,8 +27,10 @@ func main() {
 	})
 
 	// Route protette
-	http.HandleFunc("/dashboard", authMiddleware(dashboardHandler))
-	http.HandleFunc("/api/dashboard", authMiddleware(apiDashboardHandler))
+	http.HandleFunc("/alarms", authMiddleware(permissionMiddleware(PermAlarms)(alarmsHandler)))
+	http.HandleFunc("/api/alarms", authMiddleware(apiAlarmsHandler))
+	http.HandleFunc("/analog-inputs", authMiddleware(permissionMiddleware(PermAnalogInputs)(analogInputsPage)))
+	http.HandleFunc("/api/analog-inputs", authMiddleware(apiAnalogInputsHandler))
 	http.HandleFunc("/logout", authMiddleware(logoutHandler))
 	http.HandleFunc("/logs", authMiddleware(logsPageHandler))
 	http.HandleFunc("/api/logs", authMiddleware(apiLogsHandler))

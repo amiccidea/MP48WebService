@@ -1,0 +1,106 @@
+{{define "analogInputsContent"}}
+<h1>📊 Ingressi Analogici</h1>
+<div class="card-modern" style="margin-bottom: 1rem;">
+    <div class="card-body">
+        <form id="cpuForm" style="display: flex; gap: 1rem; align-items: center;">
+            <label for="cpuSelect">Seleziona CPU:</label>
+            <select id="cpuSelect" name="cpu">
+                {{range .AvailableCPUs}}
+                    <option value="{{.}}" {{if eq $.CPU .}}selected{{end}}>CPU {{.}}</option>
+                {{end}}
+            </select>
+            <button type="submit">Aggiorna</button>
+        </form>
+        <small>I dati vengono aggiornati automaticamente ogni 4 secondi.</small>
+    </div>
+</div>
+<div class="card-modern">
+    <div class="card-header">Valori correnti</div>
+    <div class="card-body">
+        <div style="overflow-x: auto;">
+            <table style="width:100%; table-layout: fixed; border-collapse: collapse;">
+                <colgroup>
+                    <col style="width: 8%;">
+                    <col style="width: 12%;">
+                    <col style="width: 5%;">
+                    <col style="width: 5%;">
+                    <col style="width: 5%;">
+                    <col style="width: 5%;">
+                    <col style="width: 5%;">
+                    <col style="width: 25%;">
+                    <col style="width: 30%;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>IOA</th><th>Valore</th><th>OV</th><th>BL</th><th>SB</th><th>NT</th><th>IV</th>
+                        <th>Timestamp</th><th>Descrizione</th>
+                    </tr>
+                </thead>
+                <tbody id="analogTableBody">
+                    <tr><td colspan="9">Caricamento...<\/td><\/tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+<script>
+    let currentCPU = {{.CPU}};
+    let refreshInterval = null;
+
+    function loadAnalogData() {
+        fetch('/api/analog-inputs?cpu=' + currentCPU)
+            .then(response => response.json())
+            .then(data => {
+                const inputs = data.inputs;
+                const tbody = document.getElementById('analogTableBody');
+                if (!inputs || inputs.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="9">Nessun dato disponibile<\/td><\/tr>';
+                    return;
+                }
+                let html = '';
+                inputs.forEach(inp => {
+                    const hasAlert = (inp.OV !== 0 || inp.BL !== 0 || inp.SB !== 0 || inp.NT !== 0 || inp.IV !== 0);
+                    const rowClass = hasAlert ? 'alert-row' : '';
+                    html += `<tr class="${rowClass}">
+                        <td>${inp.IOA}<\/td>
+                        <td>${inp.Value.toFixed(2)}<\/td>
+                        <td class="${inp.OV !== 0 ? 'alert-cell' : ''}">${inp.OV}<\/td>
+                        <td class="${inp.BL !== 0 ? 'alert-cell' : ''}">${inp.BL}<\/td>
+                        <td class="${inp.SB !== 0 ? 'alert-cell' : ''}">${inp.SB}<\/td>
+                        <td class="${inp.NT !== 0 ? 'alert-cell' : ''}">${inp.NT}<\/td>
+                        <td class="${inp.IV !== 0 ? 'alert-cell' : ''}">${inp.IV}<\/td>
+                        <td>${inp.Timestamp}<\/td>
+                        <td>${inp.Desc || ''}<\/td>
+                    <\/tr>`;
+                });
+                tbody.innerHTML = html;
+            })
+            .catch(err => {
+                console.error(err);
+                document.getElementById('analogTableBody').innerHTML = '<tr><td colspan="9">Errore caricamento dati<\/td><\/tr>';
+            });
+    }
+
+    function startRefresh() {
+        if (refreshInterval) clearInterval(refreshInterval);
+        loadAnalogData();
+        refreshInterval = setInterval(loadAnalogData, 4000);
+    }
+
+    document.getElementById('cpuSelect').addEventListener('change', function(e) {
+        currentCPU = parseInt(e.target.value);
+        startRefresh();
+        const url = new URL(window.location.href);
+        url.searchParams.set('cpu', currentCPU);
+        window.history.replaceState({}, '', url);
+    });
+    document.getElementById('cpuForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+    });
+    startRefresh();
+</script>
+<style>
+    .alert-row { background-color: #fff3f3; }
+    .alert-cell { background-color: #ffe0e0; font-weight: bold; color: #cc0000; }
+</style>
+{{end}}

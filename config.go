@@ -35,6 +35,9 @@ type Config struct {
 	CfWebFile               string        `json:"cf_web_file"`
 	PointsCmd               string        `json:"points_cmd"`
 	NetworkInterfacesFile   string        `json:"network_interfaces_file"`
+	AnalogInputsCmd         string        `json:"analog_inputs_cmd"`
+	AnalogInputsDescFile    string        `json:"analog_inputs_desc_file"`
+	AnalogInputsDescBase    string        `json:"analog_inputs_desc_base"`
 }
 
 func initConfig() {

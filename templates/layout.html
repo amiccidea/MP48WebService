@@ -72,15 +72,26 @@
         </div>
         <ul class="sidebar-nav">
             <!-- Voci comuni a tutti gli utenti autenticati -->
-            <li class="nav-item">
-                <a href="/dashboard" class="nav-link"><span class="icon">📊</span> Dashboard</a>
-            </li>
-            <li class="nav-item">
-                <a href="/logs" class="nav-link"><span class="icon">📄</span> Scarica log</a>
-            </li>
-            <li class="nav-item">
-                <a href="/machine-status" class="nav-link"><span class="icon">🖥️</span> Stato macchina e mirror</a>
-            </li>
+            {{if index .Permissions "alarms"}}
+                <li class="nav-item">
+                    <a href="/alarms" class="nav-link"><span class="icon">🚨</span> Allarmi</a>
+                </li>
+            {{end}}
+            {{if index .Permissions "analog_inputs"}}
+                <li class="nav-item">
+                    <a href="/analog-inputs" class="nav-link"><span class="icon">📈</span> Ingressi analogici</a>
+                </li>
+            {{end}}
+            {{if index .Permissions "logs"}}
+                <li class="nav-item">
+                    <a href="/logs" class="nav-link"><span class="icon">📄</span> Scarica log</a>
+                </li>
+            {{end}}
+            {{if index .Permissions "machine_status"}}
+                <li class="nav-item">
+                    <a href="/machine-status" class="nav-link"><span class="icon">🖥️</span> Stato macchina e mirror</a>
+                </li>
+            {{end}}
 
             <!-- Sezione Gestione Configurazione -->
             {{if or .IsAdmin (and .Permissions (index .Permissions "config_history")) (and .Permissions (index .Permissions "config_upload"))}}
@@ -126,8 +137,10 @@
 
     <div class="main-content">
         <!-- BOX DI DEBUG (mostra i permessi e lo stato) -->
-        {{if eq .ContentTemplate "dashboardContent"}}
-            {{template "dashboardContent" .}}
+        {{if eq .ContentTemplate "alarmsContent"}}
+            {{template "alarmsContent" .}}
+        {{else if eq .ContentTemplate "analogInputsContent"}}
+            {{template "analogInputsContent" .}}            
         {{else if eq .ContentTemplate "logsContent"}}
             {{template "logsContent" .}}
         {{else if eq .ContentTemplate "machineStatusContent"}}

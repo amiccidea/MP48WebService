@@ -37,15 +37,16 @@
 <script>
     const rolesData = {{.RolesJSON}};
     const allPermissions = [
-        "dashboard", "logs", "machine_status", "config_history",
-        "config_upload", "admin_users", "admin_roles", "admin_settings"
+        "alarms", "logs", "machine_status", "config_history",
+        "config_upload", "analog_inputs", "admin_users", "admin_roles", "admin_settings"
     ];
     const permissionLabels = {
-        "dashboard": "Dashboard",
+        "alarms": "Alarms",
         "logs": "Scarica log",
         "machine_status": "Stato macchina",
         "config_history": "Storico configurazioni",
         "config_upload": "Carica impostazioni",
+        "analog_inputs": "Analog inputs",
         "admin_users": "Gestione utenti",
         "admin_roles": "Gestione ruoli",
         "admin_settings": "Impostazioni sistema"
@@ -54,16 +55,31 @@
     let currentRoleId = null;
 
     function renderTable() {
-        let html = `<div style="overflow-x: auto;"><table style="width:100%; border-collapse: collapse; word-break: break-word; white-space: normal;"><thead><tr>
-            <th>Ruolo</th><th>Dashboard</th><th>Log</th><th>Macchina</th><th>Storico conf</th><th>Carica conf</th>
-            <th>Gestione utenti</th><th>Gestione ruoli</th><th>Impostazioni</th><th>Azioni</th>
-        </tr></thead><tbody>`;
+        let html = `<div style="overflow-x: auto;">
+            <table style="width:100%; border-collapse: collapse; table-layout: fixed;">
+                <thead>
+                    <tr>
+                        <th style="width:10%">Ruolo</th>
+                        <th style="width:5%">Alarms</th>
+                        <th style="width:5%">Log</th>
+                        <th style="width:8%">Macchina</th>
+                        <th style="width:10%">Analog inputs</th>
+                        <th style="width:10%">Storico conf</th>
+                        <th style="width:10%">Carica conf</th>
+                        <th style="width:12%">Gestione utenti</th>
+                        <th style="width:12%">Gestione ruoli</th>
+                        <th style="width:10%">Impostazioni</th>
+                        <th style="width:8%">Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>`;
         for (let role of rolesData) {
             html += `<tr>
                 <td>${role.name} ${(role.id === 'admin' || role.id === 'user' || role.id === 'tech') ? '(predefinito)' : ''}</td>
-                <td style="text-align:center">${role.permissions.dashboard ? '✅' : '❌'}</td>
+                <td style="text-align:center">${role.permissions.alarms ? '✅' : '❌'}</td>
                 <td style="text-align:center">${role.permissions.logs ? '✅' : '❌'}</td>
                 <td style="text-align:center">${role.permissions.machine_status ? '✅' : '❌'}</td>
+                <td style="text-align:center">${role.permissions.analog_inputs ? '✅' : '❌'}</td>
                 <td style="text-align:center">${role.permissions.config_history ? '✅' : '❌'}</td>
                 <td style="text-align:center">${role.permissions.config_upload ? '✅' : '❌'}</td>
                 <td style="text-align:center">${role.permissions.admin_users ? '✅' : '❌'}</td>
@@ -90,7 +106,6 @@
                 document.getElementById('roleName').value = btn.dataset.name;
                 let perms = {};
                 try {
-                    // Legge l'attributo data-perms e lo analizza
                     const permsStr = btn.getAttribute('data-perms');
                     if (permsStr && permsStr !== '') {
                         perms = JSON.parse(permsStr);
@@ -98,7 +113,6 @@
                 } catch(e) {
                     console.error('Errore parsing permessi:', e);
                 }
-                // Reset e poi imposta i checkbox
                 document.querySelectorAll('.perm-check').forEach(cb => {
                     cb.checked = perms[cb.dataset.perm] === true;
                 });
