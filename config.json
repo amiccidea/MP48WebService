@@ -26,5 +26,8 @@
     "upload_dir": "./uploads",
     "current_configuration_dir": "C:\\test\\ConfigMp48",
     "data_dir": "C:\\GITDea\\MP48WebService\\data",
-    "audit_log_dir": "C:\\test\\LogAppMp48"
+    "audit_log_dir": "C:\\test\\LogAppMp48",
+    "cf_web_file": "C:\\test\\cfweb\\cf_web.txt",
+    "points_cmd": "rsl_smm -p",
+    "network_interfaces_file": "C:\\test\\etcnetwork\\interfaces"
 }

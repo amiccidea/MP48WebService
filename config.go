@@ -32,6 +32,9 @@ type Config struct {
 	DataDir                 string        `json:"data_dir"`
 	AuditLogDir             string        `json:"audit_log_dir"`
 	CurrentConfigurationDir string        `json:"current_configuration_dir"`
+	CfWebFile               string        `json:"cf_web_file"`
+	PointsCmd               string        `json:"points_cmd"`
+	NetworkInterfacesFile   string        `json:"network_interfaces_file"`
 }
 
 func initConfig() {

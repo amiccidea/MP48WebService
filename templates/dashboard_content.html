@@ -1,15 +1,139 @@
 {{define "dashboardContent"}}
-<h1 style="margin-bottom: 1.5rem;">Dashboard di sistema</h1>
-<div class="dashboard-grid">
-    <div class="card-modern">
-        <div class="card-header">🖥️ Sistema</div>
-        <div class="card-body"><ul class="info-list"><li><strong>SO:</strong> <span>Linux RTU</span></li><li><strong>Arch:</strong> <span>386</span></li></ul></div>
+<h1>Stato impianto</h1>
+<p>Dati aggiornati in tempo reale.</p>
+
+<!-- Sezione Posizioni (SGN) -->
+{{if .Signals.Positions}}
+<div class="card-modern" style="margin-bottom: 1.5rem;">
+    <div class="card-header">📡 Segnali di posizione (SGN)</div>
+    <div class="card-body">
+        <div style="overflow-x: auto;">
+            <table style="width:100%; table-layout: fixed; border-collapse: collapse;">
+                <colgroup>
+                    <col style="width: 10%;">
+                    <col style="width: 20%;">
+                    <col style="width: 40%;">
+                    <col style="width: 30%;">
+                </colgroup>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Valore</th>
+                        <th>Descrizione</th>
+                        <th>Timestamp</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .Signals.Positions}}
+                    <tr>
+                        <td>{{.MdbIdx}}</td>
+                        <td>{{.Value}}</td>
+                        <td>{{.Desc}}</td>
+                        <td>{{.Timestamp}}</td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
     </div>
-    <div class="card-modern">
-        <div class="card-header">💾 Memoria</div>
-        <div class="card-body"><ul class="info-list"><li><strong>Totale:</strong> <span>1.0 GiB</span></li><li><strong>Disponibile:</strong> <span>512 MiB</span></li></ul></div>
-    </div>
-    <!-- aggiungi altri card come preferisci -->
 </div>
-<script src="/static/js/dashboard.js"></script>
+{{end}}
+
+<!-- Misure (MSR) -->
+{{if .Signals.Measures}}
+<div class="card-modern" style="margin-bottom: 1.5rem;">
+    <div class="card-header">📏 Misure (MSR)</div>
+    <div class="card-body">
+        <table style="width:100%; table-layout: fixed;">
+            <colgroup>
+                <col style="width: 10%;"><col style="width: 20%;"><col style="width: 40%;"><col style="width: 30%;">
+            </colgroup>
+            <thead>
+                <tr><th>ID</th><th>Valore</th><th>Descrizione</th><th>Timestamp</th></tr>
+            </thead>
+            <tbody>
+                {{range .Signals.Measures}}
+                <tr><td>{{.MdbIdx}}</td><td>{{.Value}}</td><td>{{.Desc}}</td><td>{{.Timestamp}}</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}
+
+<!-- Comandi (CTR) -->
+{{if .Signals.Commands}}
+<div class="card-modern" style="margin-bottom: 1.5rem;">
+    <div class="card-header">🎮 Comandi (CTR)</div>
+    <div class="card-body">
+        <table style="width:100%; table-layout: fixed;">
+            <colgroup><col style="width: 10%;"><col style="width: 20%;"><col style="width: 40%;"><col style="width: 30%;"></colgroup>
+            <thead><tr><th>ID</th><th>Valore</th><th>Descrizione</th><th>Timestamp</th></tr></thead>
+            <tbody>
+                {{range .Signals.Commands}}
+                <tr><td>{{.MdbIdx}}</td><td>{{.Value}}</td><td>{{.Desc}}</td><td>{{.Timestamp}}</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}
+
+<!-- Setpoint (SPR) -->
+{{if .Signals.Setpoints}}
+<div class="card-modern" style="margin-bottom: 1.5rem;">
+    <div class="card-header">⚙️ Setpoint (SPR)</div>
+    <div class="card-body">
+        <table style="width:100%; table-layout: fixed;">
+            <colgroup><col style="width: 10%;"><col style="width: 20%;"><col style="width: 40%;"><col style="width: 30%;"></colgroup>
+            <thead><tr><th>ID</th><th>Valore</th><th>Descrizione</th><th>Timestamp</th></tr></thead>
+            <tbody>
+                {{range .Signals.Setpoints}}
+                <tr><td>{{.MdbIdx}}</td><td>{{.Value}}</td><td>{{.Desc}}</td><td>{{.Timestamp}}</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}
+
+<!-- Warning (WARN) -->
+{{if .Signals.Warnings}}
+<div class="card-modern" style="margin-bottom: 1.5rem;">
+    <div class="card-header">⚠️ Warning (WARN)</div>
+    <div class="card-body">
+        <table style="width:100%; table-layout: fixed;">
+            <colgroup><col style="width: 10%;"><col style="width: 20%;"><col style="width: 40%;"><col style="width: 30%;"></colgroup>
+            <thead><tr><th>ID</th><th>Valore</th><th>Descrizione</th><th>Timestamp</th></tr></thead>
+            <tbody>
+                {{range .Signals.Warnings}}
+                <tr><td>{{.MdbIdx}}</td><td>{{.Value}}</td><td>{{.Desc}}</td><td>{{.Timestamp}}</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}
+
+<!-- Allarmi (ALM) -->
+{{if .Signals.Alarms}}
+<div class="card-modern" style="margin-bottom: 1.5rem;">
+    <div class="card-header">🚨 Allarmi (ALM)</div>
+    <div class="card-body">
+        <table style="width:100%; table-layout: fixed;">
+            <colgroup><col style="width: 10%;"><col style="width: 20%;"><col style="width: 40%;"><col style="width: 30%;"></colgroup>
+            <thead><tr><th>ID</th><th>Valore</th><th>Descrizione</th><th>Timestamp</th></tr></thead>
+            <tbody>
+                {{range .Signals.Alarms}}
+                <tr><td>{{.MdbIdx}}</td><td>{{.Value}}</td><td>{{.Desc}}</td><td>{{.Timestamp}}</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+</div>
+{{end}}
+
+{{if not .Signals.Positions}}{{if not .Signals.Measures}}{{if not .Signals.Commands}}{{if not .Signals.Setpoints}}{{if not .Signals.Warnings}}{{if not .Signals.Alarms}}}
+<p>Nessun segnale configurato o disponibile.</p>
+{{end}}{{end}}{{end}}{{end}}{{end}}{{end}}
 {{end}}

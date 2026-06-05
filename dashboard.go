@@ -14,24 +14,35 @@ func dashboardHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	perms := getUserPermissions(username)
+
+	// Recupera i dati dei segnali (posizioni, misure, comandi, setpoint, warning, allarmi)
+	signals, err := GetSignalsData()
+	if err != nil {
+		log.Printf("Errore recupero segnali: %v", err)
+		signals = &SignalsData{} // vuoto per evitare nil nel template
+	}
+
 	data := struct {
 		Username        string
 		IsAdmin         bool
 		Title           string
 		ContentTemplate string
 		Permissions     map[string]bool
+		Signals         *SignalsData
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
 		Title:           "Dashboard",
 		ContentTemplate: "dashboardContent",
 		Permissions:     perms,
+		Signals:         signals,
 	}
-	err := tmpl.ExecuteTemplate(w, "layout.html", data)
+
+	err = tmpl.ExecuteTemplate(w, "layout.html", data)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Errore nel template: %v", err), http.StatusInternalServerError)
 		log.Printf("Errore ExecuteTemplate: %v", err)
-		WriteAuditLog("dashboard_access", username, "Errore all'accesso alla dashboard:"+err.Error())
+		WriteAuditLog("dashboard_access", username, "Errore all'accesso alla dashboard: "+err.Error())
 	}
 }
 func apiDashboardHandler(w http.ResponseWriter, r *http.Request) {

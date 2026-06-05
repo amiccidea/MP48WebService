@@ -1,7 +1,61 @@
 {{define "machineStatusContent"}}
 <h1>🖥️ Stato macchina e mirror</h1>
 <div class="dashboard-grid">
-    <div class="card-modern"><div class="card-header">Macchina principale</div><div class="card-body"><ul class="info-list"><li><strong>Stato:</strong> 🟢 Operativa</li><li><strong>CPU:</strong> 23%</li></ul></div></div>
-    <div class="card-modern"><div class="card-header">Mirror</div><div class="card-body"><ul class="info-list"><li><strong>Stato:</strong> 🟢 Sincronizzato</li></ul></div></div>
+    <div class="card-modern">
+        <div class="card-header">Macchina principale</div>
+        <div class="card-body">
+            <ul class="info-list">
+                <li><strong>Stato:</strong> 🟢 Operativa</li>
+                <li><strong>CPU:</strong> 23%</li>
+                <li><strong>RAM:</strong> 512 MB / 1024 MB</li>
+            </ul>
+        </div>
+    </div>
+    <div class="card-modern">
+        <div class="card-header">Mirror</div>
+        <div class="card-body">
+            <ul class="info-list">
+                <li><strong>Stato:</strong> 🟢 Sincronizzato</li>
+                <li><strong>Latenza:</strong> &lt; 2 ms</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<!-- Sezione configurazione di rete -->
+<div class="card-modern" style="margin-top: 1.5rem;">
+    <div class="card-header">🌐 Configurazione interfacce di rete</div>
+    <div class="card-body">
+        {{if .Interfaces}}
+        <table style="width:100%; table-layout: fixed; border-collapse: collapse;">
+            <colgroup>
+                <col style="width: 15%;">
+                <col style="width: 30%;">
+                <col style="width: 25%;">
+                <col style="width: 30%;">
+            </colgroup>
+            <thead>
+                <tr>
+                    <th>Interfaccia</th>
+                    <th>Indirizzo IP</th>
+                    <th>Netmask</th>
+                    <th>Gateway</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Interfaces}}
+                <tr>
+                    <td>{{.Name}}</td>
+                    <td>{{if .Address}}{{.Address}}{{else}}❌ non configurato{{end}}</td>
+                    <td>{{if .Netmask}}{{.Netmask}}{{else}}—{{end}}</td>
+                    <td>{{if .Gateway}}{{.Gateway}}{{else}}—{{end}}</td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p>Nessuna interfaccia di rete configurata o file non trovato.</p>
+        {{end}}
+    </div>
 </div>
 {{end}}
