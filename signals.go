@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"runtime"
@@ -79,26 +80,22 @@ func parsePointLine(tokens []string) (pointType string, mdbIdx int, data map[str
 
 // getPointsOutput restituisce l'output dei punti (da comando o da file)
 func getPointsOutput() (string, error) {
-	// Su Windows, se esiste un file points.txt (generato periodicamente), leggilo
-	// Altrimenti restituisci stringa vuota (dati default)
 	if runtime.GOOS == "windows" {
-		pointsFile := "points.txt"
-		if _, err := os.Stat(pointsFile); err == nil {
-			data, err := os.ReadFile(pointsFile)
-			if err == nil {
-				return string(data), nil
-			}
+		if data, err := os.ReadFile("points.txt"); err == nil {
+			return string(data), nil
 		}
-		// Se non esiste, restituisci output vuoto (verranno usati valori default)
 		return "", nil
 	}
 
-	// Su Linux, esegui il comando reale
-	cmd := exec.Command(config.PointsCmd)
+	// Linux: prova il comando
+	cmd := exec.Command("sh", "-c", config.PointsCmd)
 	var out bytes.Buffer
 	cmd.Stdout = &out
-	err := cmd.Run()
-	if err != nil {
+	if err := cmd.Run(); err != nil {
+		log.Printf("Comando %s fallito: %v, provo points.txt", config.PointsCmd, err)
+		if data, err := os.ReadFile("points.txt"); err == nil {
+			return string(data), nil
+		}
 		return "", err
 	}
 	return out.String(), nil

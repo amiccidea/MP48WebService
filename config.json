@@ -1,36 +1,29 @@
 {
-    "ldap_server": "ldap://localhost:389",
-    "base_dn": "dc=test,dc=local",
-    "bind_dn": "cn=admin,dc=test,dc=local",
-    "bind_password": "admin",
-    "user_search_base": "ou=people,dc=test,dc=local",
-    "user_filter": "(uid=%s)",
-    "admin_users": ["admin", "root", "your_username"],
     "session_secret": "cambia-questa-chiave-segreta-con-almeno-32-caratteri",
     "session_max_age_seconds": 86400,
     "port": "8080",
     "log_categories": [
         {
             "name": "RTU System",
-            "directories": ["C:\\test\\LogRtu", "C:\\test\\LogRtu\\syslog"]
+            "directories": ["/home/andrea/Documenti/GitDea/test/LogRtu", "/home/andrea/Documenti/GitDea/test/LogRtu/syslog"]
         },
         {
             "name": "Application",
-            "directories": ["C:\\test\\LogAppMp48"]
+            "directories": ["/home/andrea/Documenti/GitDea/test/LogAppMp48"]
         }
     ],
     "log_extensions": [".log", ".txt", ".out", ".trace"],
-    "config_history_dir": "C:\\test\\config_backups",
+    "config_history_dir": "/home/andrea/Documenti/GitDea/test/config_backups",
     "config_extensions": [".rcd"],
     "protected_users": ["admin", "root"],
     "upload_dir": "./uploads",
-    "current_configuration_dir": "C:\\test\\ConfigMp48",
-    "data_dir": "C:\\GITDea\\MP48WebService\\data",
-    "audit_log_dir": "C:\\test\\LogAppMp48",
-    "cf_web_file": "C:\\test\\cfweb\\cf_web.txt",
-    "points_cmd": "rsl_smm -p",
-    "network_interfaces_file": "C:\\test\\etcnetwork\\interfaces",
-    "analog_inputs_cmd": "rsl_smm",
-    "analog_inputs_desc_file": "C:\\test\\etcrtu\\cf_%d_104_c.conf",
-    "info_version_desc_file": "C:\\test\\etccfg\\"
+    "current_configuration_dir": "/home/andrea/Documenti/GitDea/test/ConfigMp48",
+    "data_dir": "/home/andrea/Documenti/GitDea/MP48WebService/data",
+    "audit_log_dir": "/home/andrea/Documenti/GitDea/test/LogAppMp48",
+    "cf_web_file": "/home/andrea/Documenti/GitDea/test/cfweb/cf_web.txt",
+    "points_cmd": "/usr/local/bin/rsl_smm -p",
+    "network_interfaces_file": "/home/andrea/Documenti/GitDea/test/etcnetwork/interfaces",
+    "analog_inputs_cmd": "/usr/local/bin/rsl_smm",
+    "analog_inputs_desc_file": "/home/andrea/Documenti/GitDea/test/etcrtu/cf_%d_104_c.conf",
+    "info_version_desc_file": "/home/andrea/Documenti/GitDea/test/etccfg/"
 }
