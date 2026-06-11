@@ -3,7 +3,7 @@
     "session_max_age_seconds": 86400,
      "port": "8080",
      "tls_cert_file": "/home/andrea/Documenti/GitDea/MP48WebService/localhost+2.pem",
-"tls_key_file": "/home/andrea/Documenti/GitDea/MP48WebService/localhost+2-key.pem",
+    "tls_key_file": "/home/andrea/Documenti/GitDea/MP48WebService/localhost+2-key.pem",
     "log_categories": [
         {
             "name": "RTU System",
