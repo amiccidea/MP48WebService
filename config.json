@@ -1,7 +1,9 @@
 {
     "session_secret": "cambia-questa-chiave-segreta-con-almeno-32-caratteri",
     "session_max_age_seconds": 86400,
-    "port": "8080",
+     "port": "8080",
+     "tls_cert_file": "/home/andrea/Documenti/GitDea/MP48WebService/localhost+2.pem",
+"tls_key_file": "/home/andrea/Documenti/GitDea/MP48WebService/localhost+2-key.pem",
     "log_categories": [
         {
             "name": "RTU System",
@@ -12,9 +14,9 @@
             "directories": ["/home/andrea/Documenti/GitDea/test/LogAppMp48"]
         }
     ],
-    "log_extensions": [".log", ".txt", ".out", ".trace"],
+    "log_extensions": [".log", ".txt", ".evt", ".trace"],
     "config_history_dir": "/home/andrea/Documenti/GitDea/test/config_backups",
-    "config_extensions": [".rcd"],
+    "config_extensions": [".rcd", ".rwb", ".txt", ".zip"],
     "protected_users": ["admin", "root"],
     "upload_dir": "./uploads",
     "current_configuration_dir": "/home/andrea/Documenti/GitDea/test/ConfigMp48",
@@ -26,4 +28,5 @@
     "analog_inputs_cmd": "/usr/local/bin/rsl_smm",
     "analog_inputs_desc_file": "/home/andrea/Documenti/GitDea/test/etcrtu/cf_%d_104_c.conf",
     "info_version_desc_file": "/home/andrea/Documenti/GitDea/test/etccfg/"
+
 }

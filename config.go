@@ -22,6 +22,8 @@ type Config struct {
 	SessionSecret           string        `json:"session_secret"`
 	SessionMaxAgeSecond     int           `json:"session_max_age_seconds"`
 	Port                    string        `json:"port"`
+	TLSCertFile             string        `json:"tls_cert_file"`
+	TLSKeyFile              string        `json:"tls_key_file"`
 	LogFilePath             string        `json:"log_file_path"`
 	ConfigHistoryDir        string        `json:"config_history_dir"`
 	ConfigExtensions        []string      `json:"config_extensions"`

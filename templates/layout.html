@@ -5,63 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>MP48 Web Station - {{.Title}}</title>
     <link rel="stylesheet" href="/static/css/custom.css">
-    <style>
-        /* Stili per il menu mobile */
-        .menu-toggle {
-            position: fixed;
-            top: 1rem;
-            left: 1rem;
-            z-index: 1100;
-            background: var(--sap-primary, #0070c0);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 0.5rem 0.8rem;
-            cursor: pointer;
-            font-size: 1.2rem;
-            /*display: none;*/
-        }
-        @media (max-width: 768px) {
-            .menu-toggle {
-                display: block;
-            }
-            .sidebar {
-                transform: translateX(-100%);
-                transition: transform 0.3s ease;
-            }
-            .sidebar.open {
-                transform: translateX(0);
-            }
-            .main-content {
-                margin-left: 0;
-            }
-        }
-        .sub-nav {
-            margin-left: 1.8rem !important;
-        }
-        .nav-section {
-            margin-top: 0.8rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            font-size: 0.7rem;
-            letter-spacing: 0.5px;
-            color: #94a3b8;
-        }
-        /* Stile debug */
-        .debug-box {
-            background: #f8f9fa;
-            border: 1px solid #dee2e6;
-            padding: 0.5rem;
-            margin-bottom: 1rem;
-            font-family: monospace;
-            font-size: 0.8rem;
-            border-radius: 4px;
-            color: #495057;
-        }
-        .debug-box strong {
-            color: #0d6efd;
-        }
-    </style>
 </head>
 <body>
     <button class="menu-toggle" id="menuToggle">☰ Menu</button>
@@ -71,66 +14,44 @@
             <img src="/static/images/logoMp48.png" alt="Logo Mp48" style="max-width: 100%; height: auto; max-height: 50px;">
         </div>
         <ul class="sidebar-nav">
-            <!-- Voci comuni a tutti gli utenti autenticati -->
             {{if index .Permissions "alarms"}}
-                <li class="nav-item">
-                    <a href="/alarms" class="nav-link"><span class="icon">🚨</span> Allarmi</a>
-                </li>
+                <li class="nav-item"><a href="/alarms" class="nav-link"><span class="icon">🚨</span> Allarmi</a></li>
             {{end}}
             {{if index .Permissions "analog_inputs"}}
-                <li class="nav-item">
-                    <a href="/analog-inputs" class="nav-link"><span class="icon">📈</span> Ingressi analogici</a>
-                </li>
+                <li class="nav-item"><a href="/analog-inputs" class="nav-link"><span class="icon">📈</span> Ingressi analogici</a></li>
             {{end}}
             {{if index .Permissions "logs"}}
-                <li class="nav-item">
-                    <a href="/logs" class="nav-link"><span class="icon">📄</span> Scarica log</a>
-                </li>
+                <li class="nav-item"><a href="/logs" class="nav-link"><span class="icon">📄</span> Scarica log</a></li>
             {{end}}
             {{if index .Permissions "machine_status"}}
-                <li class="nav-item">
-                    <a href="/machine-status" class="nav-link"><span class="icon">🖥️</span> Info CPUs</a>
-                </li>
+                <li class="nav-item"><a href="/machine-status" class="nav-link"><span class="icon">🖥️</span> Info CPUs</a></li>
             {{end}}
 
-            <!-- Sezione Gestione Configurazione -->
             {{if or .IsAdmin (and .Permissions (index .Permissions "config_history")) (and .Permissions (index .Permissions "config_upload"))}}
             <li class="nav-section">⚙️ GESTISCI CONFIGURAZIONE</li>
             {{if and .Permissions (index .Permissions "config_history")}}
-            <li class="nav-item sub-nav">
-                <a href="/config-history" class="nav-link"><span class="icon">📜</span> Storico configurazioni</a>
-            </li>
+            <li class="nav-item sub-nav"><a href="/config-history" class="nav-link"><span class="icon">📜</span> Storico configurazioni</a></li>
             {{end}}
             {{if and .Permissions (index .Permissions "config_upload")}}
-            <li class="nav-item sub-nav">
-                <a href="/config-upload" class="nav-link"><span class="icon">📤</span> Carica impostazioni</a>
-            </li>
+            <li class="nav-item sub-nav"><a href="/config-upload" class="nav-link"><span class="icon">📤</span> Carica impostazioni</a></li>
             {{end}}
             {{end}}
 
-            <!-- Sezione Amministrazione Utenti (solo per admin o permessi) -->
             {{if or .IsAdmin (and .Permissions (index .Permissions "admin_users")) (and .Permissions (index .Permissions "admin_roles")) (and .Permissions (index .Permissions "admin_settings"))}}
             <li class="nav-section">👥 AMMINISTRAZIONE UTENTI</li>
             {{if and .Permissions (index .Permissions "admin_users")}}
-            <li class="nav-item sub-nav">
-                <a href="/admin/users" class="nav-link"><span class="icon">👥</span> Gestione utenti</a>
-            </li>
+            <li class="nav-item sub-nav"><a href="/admin/users" class="nav-link"><span class="icon">👥</span> Gestione utenti</a></li>
             {{end}}
             {{if and .Permissions (index .Permissions "admin_roles")}}
-            <li class="nav-item sub-nav">
-                <a href="/admin/roles" class="nav-link"><span class="icon">🔑</span> Gestione ruoli</a>
-            </li>
+            <li class="nav-item sub-nav"><a href="/admin/roles" class="nav-link"><span class="icon">🔑</span> Gestione ruoli</a></li>
             {{end}}
             {{if and .Permissions (index .Permissions "admin_settings")}}
-            <li class="nav-item sub-nav">
-                <a href="/admin/settings" class="nav-link"><span class="icon">⚙️</span> Impostazioni sistema</a>
-            </li>
+            <li class="nav-item sub-nav"><a href="/admin/settings" class="nav-link"><span class="icon">⚙️</span> Impostazioni sistema</a></li>
             {{end}}
             {{end}}
+
             {{if .IsAdmin}}
-            <li class="nav-item">
-                <a href="#" id="rebootLink" class="nav-link"><span class="icon">🔄</span> Reboot sistema</a>
-            </li>
+            <li class="nav-item"><a href="#" id="rebootLink" class="nav-link"><span class="icon">🔄</span> Reboot sistema</a></li>
             {{end}}
         </ul>
         <div class="sidebar-footer">
@@ -141,11 +62,10 @@
     </div>
 
     <div class="main-content">
-        <!-- BOX DI DEBUG (mostra i permessi e lo stato) -->
         {{if eq .ContentTemplate "alarmsContent"}}
             {{template "alarmsContent" .}}
         {{else if eq .ContentTemplate "analogInputsContent"}}
-            {{template "analogInputsContent" .}}            
+            {{template "analogInputsContent" .}}
         {{else if eq .ContentTemplate "logsContent"}}
             {{template "logsContent" .}}
         {{else if eq .ContentTemplate "machineStatusContent"}}
@@ -172,16 +92,23 @@
             const toggle = document.getElementById('menuToggle');
             const sidebar = document.getElementById('sidebar');
             if (!toggle || !sidebar) return;
+
+            // Gestione toggle menu solo su mobile
             function update() {
                 const isMobile = window.innerWidth <= 768;
-                toggle.style.display = isMobile ? 'block' : 'none';
-                if (!isMobile) sidebar.classList.remove('open');
+                if (!isMobile) {
+                    sidebar.classList.remove('open');
+                }
             }
             update();
+
             toggle.addEventListener('click', function(e) {
                 e.preventDefault();
-                sidebar.classList.toggle('open');
+                if (window.innerWidth <= 768) {
+                    sidebar.classList.toggle('open');
+                }
             });
+
             window.addEventListener('resize', update);
         })();
 
