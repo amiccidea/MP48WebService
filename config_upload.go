@@ -15,7 +15,8 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if r.Method == http.MethodGet {
+	// Helper per visualizzare la pagina con messaggio (errore o successo)
+	renderPage := func(message string, isError bool) {
 		data := struct {
 			Username        string
 			IsAdmin         bool
@@ -23,15 +24,21 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 			ContentTemplate string
 			Message         string
 			Permissions     map[string]bool
+			IsError         bool
 		}{
 			Username:        username,
 			IsAdmin:         isAdmin,
 			Title:           "Carica Configurazione",
 			ContentTemplate: "configUploadContent",
-			Message:         "",
+			Message:         message,
 			Permissions:     getUserPermissions(username),
+			IsError:         isError,
 		}
 		tmpl.ExecuteTemplate(w, "layout.html", data)
+	}
+
+	if r.Method == http.MethodGet {
+		renderPage("", false)
 		return
 	}
 
@@ -39,72 +46,74 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 		// 1. Leggi il file caricato
 		file, handler, err := r.FormFile("configfile")
 		if err != nil {
-			http.Error(w, "Errore nel file", http.StatusBadRequest)
+			renderPage("Errore nel file: "+err.Error(), true)
 			return
 		}
 		defer file.Close()
 
-		// 2. Verifica directory corrente
+		// 2. Verifica directory configurazione corrente
 		if config.CurrentConfigurationDir == "" {
-			http.Error(w, "Directory configurazione corrente non configurata", http.StatusInternalServerError)
+			renderPage("Directory configurazione corrente non configurata", true)
 			return
 		}
 		if err := os.MkdirAll(config.CurrentConfigurationDir, 0755); err != nil {
-			http.Error(w, "Errore creazione directory", http.StatusInternalServerError)
+			renderPage("Errore creazione directory: "+err.Error(), true)
 			return
 		}
 
-		// 3. Salva il file caricato in temporaneo
+		// 3. Salva il file caricato in un file temporaneo
 		tempFile, err := os.CreateTemp("", "upload_*.zip")
 		if err != nil {
-			http.Error(w, "Errore salvataggio temporaneo", http.StatusInternalServerError)
+			renderPage("Errore salvataggio temporaneo: "+err.Error(), true)
 			return
 		}
 		tempPath := tempFile.Name()
 		defer os.Remove(tempPath)
 		if _, err := io.Copy(tempFile, file); err != nil {
 			tempFile.Close()
-			http.Error(w, "Errore copia file", http.StatusInternalServerError)
+			renderPage("Errore copia file: "+err.Error(), true)
 			return
 		}
 		tempFile.Close()
 
-		// 4. Backup dell'intera directory corrente (usa la funzione già definita in config_history.go)
+		// 4. Validazione del contenuto dell'archivio
+		requiredExtensions := config.ExtensionFilesConfig
+		if len(requiredExtensions) == 0 {
+			// Se non ci sono estensioni configurate, nessuna validazione
+			requiredExtensions = []string{}
+		}
+		valid, err := validateArchiveContentRequired(tempPath, requiredExtensions)
+		if err != nil {
+			log.Printf("Errore validazione archivio: %v", err)
+			renderPage("Formato archivio non valido o danneggiato: "+err.Error(), true)
+			return
+		}
+		if !valid {
+			renderPage(fmt.Sprintf("L'archivio non contiene tutti i tipi di file richiesti: %v", requiredExtensions), true)
+			return
+		}
+
+		// 5. Backup dell'attuale directory corrente
 		_, backupName, err := backupCurrentConfigDir()
 		if err != nil {
 			log.Printf("Errore backup: %v", err)
-			http.Error(w, "Errore durante il backup della configurazione corrente", http.StatusInternalServerError)
+			renderPage("Errore durante il backup della configurazione corrente: "+err.Error(), true)
 			return
 		}
 		log.Printf("Backup automatico creato: %s", backupName)
 
-		// 5. Estrai l'archivio nella directory corrente (sovrascrive, non cancella)
+		// 6. Estrai l'archivio nella directory corrente
 		if err := extractArchive(tempPath, config.CurrentConfigurationDir); err != nil {
 			log.Printf("Errore estrazione: %v", err)
-			http.Error(w, "Errore durante l'estrazione dell'archivio", http.StatusInternalServerError)
+			renderPage("Errore durante l'estrazione dell'archivio: "+err.Error(), true)
 			return
 		}
 
-		// 6. Log
+		// 7. Log dell'operazione
 		WriteAuditLog("CONFIG_UPLOAD", username, fmt.Sprintf("caricato archivio %s (backup automatico: %s)", handler.Filename, backupName))
 
-		// 7. Mostra successo
-		data := struct {
-			Username        string
-			IsAdmin         bool
-			Title           string
-			ContentTemplate string
-			Message         string
-			Permissions     map[string]bool
-		}{
-			Username:        username,
-			IsAdmin:         isAdmin,
-			Title:           "Carica Configurazione",
-			ContentTemplate: "configUploadContent",
-			Message:         "Archivio caricato ed estratto con successo. Backup automatico creato: " + backupName,
-			Permissions:     getUserPermissions(username),
-		}
-		tmpl.ExecuteTemplate(w, "layout.html", data)
+		// 8. Mostra successo
+		renderPage("Archivio caricato ed estratto con successo. Backup automatico creato: "+backupName, false)
 		return
 	}
 }

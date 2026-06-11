@@ -286,3 +286,10 @@ td {
     display: block;
     margin-bottom: 0.5rem;
 }
+.message-error {
+    background: #fce7e7;
+    padding: 0.5rem;
+    margin-bottom: 1rem;
+    color: #c00;
+    border: 1px solid #f5c6c6;
+}

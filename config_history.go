@@ -16,7 +16,6 @@ import (
 	"time"
 )
 
-// Strutture per i dati
 type CurrentFileInfo struct {
 	Name    string
 	ModTime string
@@ -31,7 +30,7 @@ type BackupFileInfo struct {
 	Size       string
 }
 
-// Helper: crea backup dell'intera directory corrente (zip)
+// ==================== BACKUP DIRECTORY CORRENTE ====================
 func backupCurrentConfigDir() (string, string, error) {
 	if config.CurrentConfigurationDir == "" {
 		return "", "", fmt.Errorf("directory corrente non configurata")
@@ -48,7 +47,6 @@ func backupCurrentConfigDir() (string, string, error) {
 		return "", "", err
 	}
 	defer zipFile.Close()
-
 	zipWriter := zip.NewWriter(zipFile)
 	defer zipWriter.Close()
 
@@ -91,7 +89,7 @@ func backupCurrentConfigDir() (string, string, error) {
 	return backupPath, backupName, nil
 }
 
-// Estrazione archivi (utile per ripristino)
+// ==================== ESTRAZIONE ARCHIVI ====================
 func extractArchive(archivePath, destDir string) error {
 	ext := strings.ToLower(filepath.Ext(archivePath))
 	switch ext {
@@ -100,7 +98,8 @@ func extractArchive(archivePath, destDir string) error {
 	case ".tar":
 		return extractTar(archivePath, destDir)
 	case ".gz":
-		if strings.HasSuffix(strings.ToLower(archivePath), ".tar.gz") || strings.HasSuffix(strings.ToLower(archivePath), ".tgz") {
+		if strings.HasSuffix(strings.ToLower(archivePath), ".tar.gz") ||
+			strings.HasSuffix(strings.ToLower(archivePath), ".tgz") {
 			return extractTarGz(archivePath, destDir)
 		}
 		return fmt.Errorf("formato non supportato: %s", ext)
@@ -218,7 +217,129 @@ func extractTarGz(tarGzPath, destDir string) error {
 	return nil
 }
 
-// Handler principale storico configurazioni
+// ==================== VALIDAZIONE CONTENUTO ARCHIVIO ====================
+func validateArchiveContentRequired(archivePath string, required []string) (bool, error) {
+	if len(required) == 0 {
+		return true, nil
+	}
+	ext := strings.ToLower(filepath.Ext(archivePath))
+	switch ext {
+	case ".zip":
+		return validateZipContentRequired(archivePath, required)
+	case ".tar":
+		return validateTarContentRequired(archivePath, required)
+	case ".gz":
+		if strings.HasSuffix(strings.ToLower(archivePath), ".tar.gz") ||
+			strings.HasSuffix(strings.ToLower(archivePath), ".tgz") {
+			return validateTarGzContentRequired(archivePath, required)
+		}
+		return false, fmt.Errorf("formato non supportato: %s", ext)
+	default:
+		return false, fmt.Errorf("formato non supportato: %s", ext)
+	}
+}
+
+func validateZipContentRequired(zipPath string, required []string) (bool, error) {
+	r, err := zip.OpenReader(zipPath)
+	if err != nil {
+		return false, err
+	}
+	defer r.Close()
+	found := make(map[string]bool)
+	for _, req := range required {
+		found[strings.ToLower(req)] = false
+	}
+	for _, f := range r.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+		ext := strings.ToLower(filepath.Ext(f.Name))
+		if _, ok := found[ext]; ok {
+			found[ext] = true
+		}
+	}
+	for _, ok := range found {
+		if !ok {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func validateTarContentRequired(tarPath string, required []string) (bool, error) {
+	f, err := os.Open(tarPath)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	tr := tar.NewReader(f)
+	found := make(map[string]bool)
+	for _, req := range required {
+		found[strings.ToLower(req)] = false
+	}
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return false, err
+		}
+		if header.Typeflag == tar.TypeReg {
+			ext := strings.ToLower(filepath.Ext(header.Name))
+			if _, ok := found[ext]; ok {
+				found[ext] = true
+			}
+		}
+	}
+	for _, ok := range found {
+		if !ok {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+func validateTarGzContentRequired(tarGzPath string, required []string) (bool, error) {
+	f, err := os.Open(tarGzPath)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+	gzr, err := gzip.NewReader(f)
+	if err != nil {
+		return false, err
+	}
+	defer gzr.Close()
+	tr := tar.NewReader(gzr)
+	found := make(map[string]bool)
+	for _, req := range required {
+		found[strings.ToLower(req)] = false
+	}
+	for {
+		header, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return false, err
+		}
+		if header.Typeflag == tar.TypeReg {
+			ext := strings.ToLower(filepath.Ext(header.Name))
+			if _, ok := found[ext]; ok {
+				found[ext] = true
+			}
+		}
+	}
+	for _, ok := range found {
+		if !ok {
+			return false, nil
+		}
+	}
+	return true, nil
+}
+
+// ==================== HANDLER STORICO CONFIGURAZIONI ====================
 func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	username, isAdmin := getUserContext(r)
 	perms := getUserPermissions(username)
@@ -355,7 +476,7 @@ func configHistoryDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filePath)
 }
 
-// Download singolo file configurazione corrente
+// Download singolo file della configurazione corrente
 func configCurrentFileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	filePathParam := r.URL.Query().Get("path")
 	if filePathParam == "" {
@@ -401,7 +522,7 @@ func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// Ripristina backup (sovrascrive, non cancella)
+// Ripristina backup
 func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -426,15 +547,13 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Directory corrente non configurata", http.StatusInternalServerError)
 		return
 	}
-	// Backup automatico
 	_, backupZipName, err := backupCurrentConfigDir()
 	if err != nil {
 		log.Printf("Errore backup: %v", err)
-		http.Error(w, "Errore backup", http.StatusInternalServerError)
+		http.Error(w, "Errore durante il backup della configurazione corrente", http.StatusInternalServerError)
 		return
 	}
 	log.Printf("Backup automatico creato: %s", backupZipName)
-	// Estrai archivio (sovrascrive, non cancella)
 	if err := extractArchive(backupPath, config.CurrentConfigurationDir); err != nil {
 		log.Printf("Errore estrazione: %v", err)
 		http.Error(w, "Errore durante il ripristino", http.StatusInternalServerError)

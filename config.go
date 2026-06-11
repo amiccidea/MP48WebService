@@ -41,6 +41,8 @@ type Config struct {
 	AnalogInputsDescFile    string        `json:"analog_inputs_desc_file"`
 	AnalogInputsDescBase    string        `json:"analog_inputs_desc_base"`
 	InfoVersionDescDir      string        `json:"info_version_desc_file"`
+	Mp48Type                string        `json:"mp48_type"`
+	ExtensionFilesConfig    []string      `json:"extension_files_config"`
 }
 
 func initConfig() {

@@ -3,7 +3,13 @@
 <div class="card-modern">
     <div class="card-header">Nuova configurazione</div>
     <div class="card-body">
-        {{if .Message}}<div class="message-success">✅ {{.Message}}</div>{{end}}
+        {{if .Message}}
+            {{if .IsError}}
+                <div class="message-error">❌ {{.Message}}</div>
+            {{else}}
+                <div class="message-success">✅ {{.Message}}</div>
+            {{end}}
+        {{end}}
         <form id="uploadForm" method="POST" enctype="multipart/form-data">
             <label for="configfile" class="form-label">File archivio (.zip, .tar, .tar.gz) contenente la configurazione</label>
             <input type="file" name="configfile" id="configfile" required accept=".zip,.tar,.tar.gz,.tgz">
@@ -17,8 +23,8 @@
     document.getElementById('uploadForm').addEventListener('submit', function(e) {
         const fileInput = document.getElementById('configfile');
         const fileName = fileInput.files[0] ? fileInput.files[0].name : '';
-        const confirmMsg = '⚠️ ATTENZIONE: questa operazione sovrascriverà il file di configurazione attualmente in uso.\n\n' +
-                           'Prima di procedere verrà creato automaticamente un backup del file corrente.\n\n' +
+        const confirmMsg = '⚠️ ATTENZIONE: questa operazione sovrascriverà la configurazione attualmente in uso.\n\n' +
+                           'Prima di procedere verrà creato automaticamente un backup.\n\n' +
                            'Sei sicuro di voler caricare "' + fileName + '" e sostituire la configurazione di produzione?';
         if (!confirm(confirmMsg)) {
             e.preventDefault();
