@@ -5,8 +5,8 @@
     <div class="card-body">
         {{if .Message}}<div class="message-success">✅ {{.Message}}</div>{{end}}
         <form id="uploadForm" method="POST" enctype="multipart/form-data">
-            <label for="configfile" class="form-label">File di configurazione (formati accettati: .rdc, .rcd, .cfg, .conf, .json)</label>
-            <input type="file" name="configfile" id="configfile" required accept=".rdc,.rcd,.cfg,.conf,.json">
+            <label for="configfile" class="form-label">File archivio (.zip, .tar, .tar.gz) contenente la configurazione</label>
+            <input type="file" name="configfile" id="configfile" required accept=".zip,.tar,.tar.gz,.tgz">
             <br><br>
             <button type="submit">Carica</button>
         </form>

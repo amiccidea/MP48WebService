@@ -6,9 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
-	"strings"
-	"time"
 )
 
 func configUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -47,55 +44,51 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 
-		// 2. Verifica che la directory della configurazione corrente sia configurata
+		// 2. Verifica directory corrente
 		if config.CurrentConfigurationDir == "" {
 			http.Error(w, "Directory configurazione corrente non configurata", http.StatusInternalServerError)
 			return
 		}
+		if err := os.MkdirAll(config.CurrentConfigurationDir, 0755); err != nil {
+			http.Error(w, "Errore creazione directory", http.StatusInternalServerError)
+			return
+		}
 
-		// 3. Trova il file di configurazione corrente (supponendo un solo file)
-		entries, err := os.ReadDir(config.CurrentConfigurationDir)
+		// 3. Salva il file caricato in temporaneo
+		tempFile, err := os.CreateTemp("", "upload_*.zip")
 		if err != nil {
-			log.Printf("Errore lettura directory corrente: %v", err)
-			http.Error(w, "Errore accesso directory corrente", http.StatusInternalServerError)
+			http.Error(w, "Errore salvataggio temporaneo", http.StatusInternalServerError)
 			return
 		}
-		if len(entries) == 0 {
-			http.Error(w, "Nessun file di configurazione corrente trovato", http.StatusNotFound)
+		tempPath := tempFile.Name()
+		defer os.Remove(tempPath)
+		if _, err := io.Copy(tempFile, file); err != nil {
+			tempFile.Close()
+			http.Error(w, "Errore copia file", http.StatusInternalServerError)
 			return
 		}
-		currentConfigPath := filepath.Join(config.CurrentConfigurationDir, entries[0].Name())
+		tempFile.Close()
 
-		// 4. Crea un backup della configurazione corrente prima di sovrascriverla
-		timestamp := time.Now().Format("20060102_150405")
-		backupName := fmt.Sprintf("%s_backup_%s.rcd",
-			strings.TrimSuffix(entries[0].Name(), filepath.Ext(entries[0].Name())),
-			timestamp)
-		backupPath := filepath.Join(config.ConfigHistoryDir, backupName)
-		if err := copyFile(currentConfigPath, backupPath); err != nil {
-			log.Printf("Errore backup configurazione corrente: %v", err)
+		// 4. Backup dell'intera directory corrente (usa la funzione già definita in config_history.go)
+		_, backupName, err := backupCurrentConfigDir()
+		if err != nil {
+			log.Printf("Errore backup: %v", err)
 			http.Error(w, "Errore durante il backup della configurazione corrente", http.StatusInternalServerError)
 			return
 		}
+		log.Printf("Backup automatico creato: %s", backupName)
 
-		// 5. Sovrascrive la configurazione corrente con il file caricato
-		dst, err := os.Create(currentConfigPath)
-		if err != nil {
-			log.Printf("Errore creazione file destinazione: %v", err)
-			http.Error(w, "Errore salvataggio", http.StatusInternalServerError)
-			return
-		}
-		defer dst.Close()
-		if _, err := io.Copy(dst, file); err != nil {
-			log.Printf("Errore copia file: %v", err)
-			http.Error(w, "Errore scrittura file", http.StatusInternalServerError)
+		// 5. Estrai l'archivio nella directory corrente (sovrascrive, non cancella)
+		if err := extractArchive(tempPath, config.CurrentConfigurationDir); err != nil {
+			log.Printf("Errore estrazione: %v", err)
+			http.Error(w, "Errore durante l'estrazione dell'archivio", http.StatusInternalServerError)
 			return
 		}
 
-		// 6. Log dell'operazione
-		WriteAuditLog("CONFIG_UPLOAD", username, fmt.Sprintf("caricato file %s (backup automatico: %s)", handler.Filename, backupName))
+		// 6. Log
+		WriteAuditLog("CONFIG_UPLOAD", username, fmt.Sprintf("caricato archivio %s (backup automatico: %s)", handler.Filename, backupName))
 
-		// 7. Mostra la pagina con messaggio di successo
+		// 7. Mostra successo
 		data := struct {
 			Username        string
 			IsAdmin         bool
@@ -108,7 +101,7 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 			IsAdmin:         isAdmin,
 			Title:           "Carica Configurazione",
 			ContentTemplate: "configUploadContent",
-			Message:         "File caricato con successo. Backup automatico creato: " + backupName,
+			Message:         "Archivio caricato ed estratto con successo. Backup automatico creato: " + backupName,
 			Permissions:     getUserPermissions(username),
 		}
 		tmpl.ExecuteTemplate(w, "layout.html", data)

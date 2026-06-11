@@ -1,10 +1,8 @@
 {{define "configHistoryContent"}}
-<h1>📜 Storico configurazioni 
-    <small style="font-size:0.8rem; color:#6c757d;">(formati: {{range $i, $ext := .Extensions}}{{if $i}}, {{end}}{{$ext}}{{end}})</small>
-</h1>
+<h1>📜 Storico configurazioni</h1>
 
 <div class="card-modern" style="margin-bottom: 1.5rem;">
-    <div class="card-header">Filtra per data di modifica</div>
+    <div class="card-header">Filtra per data di modifica (backup)</div>
     <div class="card-body">
         <form method="GET" action="/config-history" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
             <div>
@@ -23,50 +21,55 @@
     </div>
 </div>
 
-<!-- Configurazione corrente (se presente) -->
-{{if .CurrentConfigFile.Name}}
+<!-- Configurazione corrente (elenco di tutti i file) -->
 <div class="card-modern" style="margin-bottom: 1.5rem;">
     <div class="card-header">📄 Configurazione corrente</div>
     <div class="card-body">
+        {{if .CurrentFiles}}
         <table style="width:100%; table-layout: fixed;">
             <colgroup>
-                <col style="width: 35%;">
-                <col style="width: 20%;">
+                <col style="width: 40%;">
+                <col style="width: 25%;">
                 <col style="width: 15%;">
-                <col style="width: 30%;">
+                <col style="width: 20%;">
             </colgroup>
             <thead>
                 <tr><th>Nome file</th><th>Data modifica</th><th>Dimensione</th><th>Azioni</th></tr>
             </thead>
             <tbody>
+                {{range .CurrentFiles}}
                 <tr>
-                    <td>{{.CurrentConfigFile.Name}}</td>
-                    <td>{{.CurrentConfigFile.ModTime}}</td>
-                    <td>{{.CurrentConfigFile.Size}}</td>
-                    <td><a href="/config-current/download">📥 Scarica</a></td>
+                    <td>{{.Name}}</td>
+                    <td>{{.ModTime}}</td>
+                    <td>{{.Size}}</td>
+                    <td><a href="/config-current/download?path={{.Path}}">📥 Scarica</a></td>
                 </tr>
+                {{end}}
             </tbody>
         </table>
+        {{else}}
+        <p>Nessun file presente nella directory di configurazione corrente.</p>
+        {{end}}
     </div>
 </div>
-{{end}}
 
+<!-- Backup disponibili (archivi compressi) -->
 <div class="card-modern">
-    <div class="card-header">File backup configurazione disponibili ({{len .Files}})</div>
+    <div class="card-header">Backup disponibili ({{len .Backups}})</div>
     <div class="card-body">
-        {{if .Files}}
+        {{if .Backups}}
         <table style="width:100%; table-layout: fixed;">
             <colgroup>
-                <col style="width: 35%;">
-                <col style="width: 20%;">
+                <col style="width: 40%;">
+                <col style="width: 25%;">
                 <col style="width: 15%;">
-                <col style="width: 30%;">
+                <col style="width: 20%;">
             </colgroup>
             <thead>
                 <tr><th>Nome file</th><th>Data modifica</th><th>Dimensione</th><th>Azioni</th></tr>
             </thead>
             <tbody>
-                {{range .Files}}
+                {{range .Backups}}
                 <tr>
                     <td>{{.Name}}</td>
                     <td>{{.ModTime}}</td>
@@ -83,14 +86,14 @@
             </tbody>
         </table>
         {{else}}
-        <p>Nessun file trovato con estensioni ...</p>
+        <p>Nessun backup trovato.</p>
         {{end}}
     </div>
 </div>
 
 <script>
 function confirmDelete(filename) {
-    if (confirm('Sei sicuro di voler eliminare il file ' + filename + '?')) {
+    if (confirm('Sei sicuro di voler eliminare il backup ' + filename + '?')) {
         fetch('/config-history/delete/' + encodeURIComponent(filename), {
             method: 'DELETE'
         }).then(response => {
@@ -103,7 +106,7 @@ function confirmDelete(filename) {
     }
 }
 function confirmRestore(filename) {
-    if (confirm('⚠️ Attenzione: ripristinare questo file sovrascriverà la configurazione corrente. Un backup automatico della configurazione attuale verrà creato nella cartella degli storici. Procedere?')) {
+    if (confirm('⚠️ Attenzione: ripristinare questo backup sovrascriverà l\'intera configurazione corrente. Verrà creato un backup automatico dello stato attuale. Procedere?')) {
         fetch('/config-history/restore/' + encodeURIComponent(filename), {
             method: 'POST'
         }).then(response => {
@@ -116,6 +119,5 @@ function confirmRestore(filename) {
         }).catch(err => alert('Errore di rete'));
     }
 }
-</script>
 </script>
 {{end}}
