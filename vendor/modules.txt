@@ -1,0 +1,21 @@
+# github.com/Azure/go-ntlmssp v0.1.0
+## explicit; go 1.24
+# github.com/go-asn1-ber/asn1-ber v1.5.8-0.20250403174932-29230038a667
+## explicit; go 1.13
+# github.com/go-ldap/ldap/v3 v3.4.13
+## explicit; go 1.24.0
+# github.com/google/uuid v1.6.0
+## explicit
+# github.com/gorilla/securecookie v1.1.2
+## explicit; go 1.20
+github.com/gorilla/securecookie
+# github.com/gorilla/sessions v1.4.0
+## explicit; go 1.23
+github.com/gorilla/sessions
+# github.com/jlaffaye/ftp v0.2.1
+## explicit; go 1.26
+github.com/jlaffaye/ftp
+# golang.org/x/crypto v0.52.0
+## explicit; go 1.25.0
+golang.org/x/crypto/bcrypt
+golang.org/x/crypto/blowfish
