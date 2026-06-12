@@ -1,9 +1,13 @@
 {
     "session_secret": "cambia-questa-chiave-segreta-con-almeno-32-caratteri",
-    "session_max_age_seconds": 86400,
-     "port": "8080",
-     "tls_cert_file": "/home/andrea/Documenti/GitDea/MP48WebService/localhost+2.pem",
-    "tls_key_file": "/home/andrea/Documenti/GitDea/MP48WebService/localhost+2-key.pem",
+    "session_inactivity_minutes": 30,
+    "session_absolute_hours": 4,
+    "session_max_age_seconds": 144400,
+    "port": "8080",
+    "portssl": "8433",
+    "tls_cert_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2.pem",
+    "tls_key_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2-key.pem",
+
     "log_categories": [
         {
             "name": "RTU System",
@@ -30,4 +34,5 @@
     "info_version_desc_file": "/home/andrea/Documenti/GitDea/test/etccfg/",
     "mp48_type": "gateway",
     "extension_files_config": [".conf", ".rwb"]
+                                                                                                    
 }

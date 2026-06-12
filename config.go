@@ -12,16 +12,21 @@ type LogCategory struct {
 }
 
 type Config struct {
-	LDAPServer              string        `json:"ldap_server"`
-	BaseDN                  string        `json:"base_dn"`
-	BindDN                  string        `json:"bind_dn"`
-	BindPassword            string        `json:"bind_password"`
-	UserSearchBase          string        `json:"user_search_base"`
-	UserFilter              string        `json:"user_filter"`
-	AdminUsers              []string      `json:"admin_users"`
-	SessionSecret           string        `json:"session_secret"`
-	SessionMaxAgeSecond     int           `json:"session_max_age_seconds"`
+	LDAPServer          string   `json:"ldap_server"`
+	BaseDN              string   `json:"base_dn"`
+	BindDN              string   `json:"bind_dn"`
+	BindPassword        string   `json:"bind_password"`
+	UserSearchBase      string   `json:"user_search_base"`
+	UserFilter          string   `json:"user_filter"`
+	AdminUsers          []string `json:"admin_users"`
+	SessionSecret       string   `json:"session_secret"`
+	SessionMaxAgeSecond int      `json:"session_max_age_seconds"`
+	// ... campi esistenti ...
+	SessionInactivityMinutes int `json:"session_inactivity_minutes"`
+	// opzionale, se vuoi anche timeout assoluto:
+	SessionAbsoluteHours    int           `json:"session_absolute_hours"`
 	Port                    string        `json:"port"`
+	PortSSL                 string        `json:"portssl"`
 	TLSCertFile             string        `json:"tls_cert_file"`
 	TLSKeyFile              string        `json:"tls_key_file"`
 	LogFilePath             string        `json:"log_file_path"`

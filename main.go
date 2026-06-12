@@ -88,6 +88,23 @@ func main() {
 		http.Redirect(w, r, "/alarms", http.StatusFound)
 	})
 
-	log.Printf("Server avviato su http://localhost:%s", config.Port)
-	log.Fatal(http.ListenAndServe(":"+config.Port, nil))
+	// Avvia server HTTP sulla porta config.Port
+	go func() {
+		log.Printf("Server HTTP avviato su http://localhost:%s", config.Port)
+		if err := http.ListenAndServe(":"+config.Port, nil); err != nil {
+			log.Fatalf("Errore server HTTP: %v", err)
+		}
+	}()
+
+	// Avvia server HTTPS sulla porta config.PortSSL se i certificati sono configurati
+	if config.TLSCertFile != "" && config.TLSKeyFile != "" {
+		log.Printf("Server HTTPS avviato su https://localhost:%s", config.PortSSL)
+		if err := http.ListenAndServeTLS(":"+config.PortSSL, config.TLSCertFile, config.TLSKeyFile, nil); err != nil {
+			log.Fatalf("Errore server HTTPS: %v", err)
+		}
+	} else {
+		log.Println("Certificati TLS non configurati, server HTTPS non avviato")
+		// Mantiene il main in esecuzione
+		select {}
+	}
 }

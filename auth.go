@@ -29,7 +29,6 @@ func init() {
 		SameSite: http.SameSiteLaxMode,
 	}
 
-	// Template parsing
 	funcMap := template.FuncMap{
 		"getAllPermissions": getAllPermissions,
 		"permissionLabel":   permissionLabel,
@@ -129,7 +128,6 @@ func authenticateLocal(username, password string) bool {
 		return false
 	}
 
-	// Controlla se l'account è bloccato
 	if !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
 		log.Printf("Accesso negato per utente bloccato: %s (bloccato fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
 		WriteAuditLog("login_failed", username, "Accesso negato per utente bloccato")
@@ -142,9 +140,7 @@ func authenticateLocal(username, password string) bool {
 		return false
 	}
 
-	// Verifica password
 	ok := false
-	// Migrazione plain text
 	if !strings.HasPrefix(u.PasswordHash, "$2a$") && !strings.HasPrefix(u.PasswordHash, "$2b$") {
 		if u.PasswordHash == password {
 			newHash, err := hashPassword(password)
@@ -162,7 +158,6 @@ func authenticateLocal(username, password string) bool {
 	}
 
 	if ok {
-		// Reset tentativi falliti e sblocca se era bloccato
 		u.FailedLoginAttempts = 0
 		u.LockedUntil = time.Time{}
 		saveUsers(currentDataDir)
@@ -171,12 +166,10 @@ func authenticateLocal(username, password string) bool {
 		return true
 	}
 
-	// Tentativo fallito: incrementa contatore
 	u.FailedLoginAttempts++
 	WriteAuditLog("login_failed", username, "Tentativo di accesso fallito")
 	log.Printf("Tentativo di accesso fallito per %s (%d/5)", username, u.FailedLoginAttempts)
 
-	// Dopo 5 tentativi, blocca l'account per 15 minuti
 	if u.FailedLoginAttempts >= 5 {
 		u.LockedUntil = time.Now().Add(15 * time.Minute)
 		WriteAuditLog("login_failed", username, "Account bloccato per 15 minuti")
@@ -199,6 +192,32 @@ func isPasswordExpired(u *User) bool {
 		return false
 	}
 	return time.Since(u.PasswordChangedAt) > time.Duration(settings.PasswordExpiryDays)*24*time.Hour
+}
+
+// updateSessionActivity aggiorna il timestamp di ultima attività nella sessione.
+func updateSessionActivity(session *sessions.Session) {
+	session.Values["last_activity"] = time.Now().Unix()
+}
+
+// isSessionExpired controlla se la sessione è scaduta per inattività.
+func isSessionExpired(session *sessions.Session) bool {
+	lastActivityVal, ok := session.Values["last_activity"]
+	if !ok {
+		return false
+	}
+	lastActivity, ok := lastActivityVal.(int64)
+	if !ok {
+		return false
+	}
+	lastTime := time.Unix(lastActivity, 0)
+	inactivityMinutes := config.SessionInactivityMinutes
+	if inactivityMinutes <= 0 {
+		inactivityMinutes = 30
+	}
+	if time.Since(lastTime) > time.Duration(inactivityMinutes)*time.Minute {
+		return true
+	}
+	return false
 }
 
 func getUserContext(r *http.Request) (username string, isAdmin bool) {
@@ -237,6 +256,15 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
+		if isSessionExpired(session) {
+			session.Values["authenticated"] = false
+			session.Options.MaxAge = -1
+			session.Save(r, w)
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+		updateSessionActivity(session)
+		session.Save(r, w)
 		next(w, r)
 	}
 }
@@ -278,6 +306,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		session.Values["authenticated"] = true
 		session.Values["username"] = username
 		session.Values["is_admin"] = (u.Role == RoleAdmin)
+		now := time.Now().Unix()
+		session.Values["last_activity"] = now
+		session.Values["created_at"] = now
 		session.Save(r, w)
 		log.Printf("Login riuscito per %s (admin=%v)", username, u.Role == RoleAdmin)
 		WriteAuditLog("login_success", username, "Login riuscito")
@@ -285,10 +316,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Se l'autenticazione fallisce, verifica se l'utente esiste ed è bloccato
 	u := getUserByUsername(username)
 	if u != nil && !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
-		// Mostra messaggio di blocco con l'orario di sblocco
 		tmpl.ExecuteTemplate(w, "login.html", map[string]string{
 			"error": fmt.Sprintf("Account bloccato fino alle %s", u.LockedUntil.Format("15:04:05")),
 		})
@@ -383,6 +412,7 @@ func changePasswordPost(w http.ResponseWriter, r *http.Request) {
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
 	session.Values["is_admin"] = (u.Role == RoleAdmin)
+	session.Values["last_activity"] = time.Now().Unix()
 	session.Save(r, w)
 	http.Redirect(w, r, "/alarms", http.StatusFound)
 }
@@ -395,7 +425,6 @@ func profileChangePasswordPage(w http.ResponseWriter, r *http.Request) {
 	tmpl.ExecuteTemplate(w, "change_password.html", data)
 }
 
-// getUsernameFromContext restituisce il nome utente dalla sessione (vuoto se non autenticato)
 func getUsernameFromContext(r *http.Request) string {
 	username, _ := getUserContext(r)
 	return username
@@ -472,6 +501,7 @@ func profileChangePasswordPost(w http.ResponseWriter, r *http.Request) {
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
 	session.Values["is_admin"] = isAdmin
+	session.Values["last_activity"] = time.Now().Unix()
 	session.Save(r, w)
 	http.Redirect(w, r, "/alarms", http.StatusFound)
 }
