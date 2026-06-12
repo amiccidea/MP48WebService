@@ -33,6 +33,27 @@
     "analog_inputs_desc_file": "/home/andrea/Documenti/GitDea/test/etcrtu/cf_%d_104_c.conf",
     "info_version_desc_file": "/home/andrea/Documenti/GitDea/test/etccfg/",
     "mp48_type": "gateway",
-    "extension_files_config": [".conf", ".rwb"]
-                                                                                                    
+    "extension_files_config": [".conf", ".rwb"],
+    "remote_machines": [
+        {
+            "id": "cpu2",
+            "name": "CPU secondaria",
+			"ftp": {
+				"host": "192.168.1.100",
+				"port": 21,
+				"username": "ftpuser",
+				"password": "ftppassword",
+				"remote_dir": "/backup",
+				"passive": true
+			},
+            "telnet": {
+                "host": "192.168.1.100",
+                "port": 23,
+                "username": "root",
+                "password": "rootpass",
+                "reboot_command": "reboot",
+                "timeout_seconds": 10
+            }
+        }
+    ]                                                                                     
 }

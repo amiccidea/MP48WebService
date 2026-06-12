@@ -81,8 +81,11 @@ func main() {
 	http.HandleFunc("/admin/users/unlock", authMiddleware(adminMiddleware(adminUserUnlock)))
 
 	// Reboot
-	http.HandleFunc("/api/reboot", authMiddleware(adminMiddleware(rebootHandler)))
-
+	http.HandleFunc("/reboot", authMiddleware(adminMiddleware(rebootPageHandler)))
+	http.HandleFunc("/api/reboot-local", authMiddleware(adminMiddleware(rebootLocalHandler)))
+	http.HandleFunc("/api/reboot-remote", authMiddleware(adminMiddleware(rebootRemoteHandler)))
+	http.HandleFunc("/api/reboot-cascade", authMiddleware(adminMiddleware(rebootCascadeHandler)))
+	http.HandleFunc("/api/reboot-status", authMiddleware(adminMiddleware(rebootStatusHandler)))
 	// Redirect home
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/alarms", http.StatusFound)

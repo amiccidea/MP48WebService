@@ -1,0 +1,100 @@
+{{define "rebootContent"}}
+<h1>🔄 Riavvio sistema</h1>
+<div class="card-modern">
+    <div class="card-header">Opzioni di riavvio</div>
+    <div class="card-body">
+        <div style="margin-bottom: 1rem;">
+            <button id="rebootLocal" class="button">🖥️ Riavvia questa macchina</button>
+        </div>
+        <h3>Macchine remote</h3>
+        <div id="remoteMachines">
+            {{range .RemoteMachines}}
+            <div style="margin: 0.5rem 0; padding: 0.5rem; border: 1px solid #ddd;">
+                <strong>{{.Name}}</strong> ({{.ID}})<br>
+                <button class="rebootRemoteBtn" data-id="{{.ID}}" data-name="{{.Name}}">🔄 Riavvia remoto</button>
+                <button class="rebootCascadeBtn" data-id="{{.ID}}" data-name="{{.Name}}">⚙️ Riavvio in cascata</button>
+            </div>
+            {{end}}
+        </div>
+        <div id="rebootStatus" style="margin-top: 1rem; padding: 0.5rem; border-radius: 4px; display: none;"></div>
+    </div>
+</div>
+
+<script>
+    const rebootLocalBtn = document.getElementById('rebootLocal');
+    const statusDiv = document.getElementById('rebootStatus');
+    let pollInterval = null;
+
+    function showStatus(message, isError) {
+        statusDiv.style.display = 'block';
+        statusDiv.innerHTML = message;
+        statusDiv.style.backgroundColor = isError ? '#fce7e7' : '#e7fce7';
+        statusDiv.style.color = isError ? '#c00' : '#0a0';
+    }
+
+    async function callReboot(endpoint, confirmMsg, isAsync = false) {
+        if (!confirm(confirmMsg)) return;
+        showStatus('⏳ In esecuzione...', false);
+        try {
+            const resp = await fetch(endpoint, { method: 'POST' });
+            if (!resp.ok) {
+                const text = await resp.text();
+                showStatus('❌ Errore: ' + text, true);
+                return;
+            }
+            if (isAsync) {
+                const data = await resp.json();
+                const opId = data.id;
+                showStatus('⏳ Operazione avviata. Monitoraggio in corso...', false);
+                if (pollInterval) clearInterval(pollInterval);
+                pollInterval = setInterval(async () => {
+                    const statusResp = await fetch(`/api/reboot-status?id=${opId}`);
+                    if (statusResp.ok) {
+                        const statusData = await statusResp.json();
+                        showStatus(`🔄 ${statusData.message}`, statusData.status === 'error');
+                        if (statusData.status === 'completed' || statusData.status === 'error') {
+                            clearInterval(pollInterval);
+                            pollInterval = null;
+                            if (statusData.status === 'completed') {
+                                setTimeout(() => { window.location.href = '/login'; }, 3000);
+                            }
+                        }
+                    } else {
+                        showStatus('❌ Errore nel monitoraggio', true);
+                        if (pollInterval) clearInterval(pollInterval);
+                        pollInterval = null;
+                    }
+                }, 3000);
+            } else {
+                const text = await resp.text();
+                showStatus('✅ ' + text, false);
+                if (endpoint === '/api/reboot-local') {
+                    setTimeout(() => { window.location.href = '/login'; }, 3000);
+                }
+            }
+        } catch (err) {
+            showStatus('❌ Errore di rete: ' + err, true);
+        }
+    }
+
+    rebootLocalBtn.addEventListener('click', () => {
+        callReboot('/api/reboot-local', '⚠️ Sei sicuro di voler riavviare questa macchina?', false);
+    });
+
+    document.querySelectorAll('.rebootRemoteBtn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.id;
+            const name = btn.dataset.name;
+            callReboot(`/api/reboot-remote?id=${id}`, `⚠️ Sei sicuro di voler riavviare la macchina remota "${name}"?`, false);
+        });
+    });
+
+    document.querySelectorAll('.rebootCascadeBtn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.dataset.id;
+            const name = btn.dataset.name;
+            callReboot(`/api/reboot-cascade?id=${id}`, `⚠️ Sei sicuro di voler eseguire il riavvio in cascata (remoto "${name}" e poi locale)?`, true);
+        });
+    });
+</script>
+{{end}}
