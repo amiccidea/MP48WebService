@@ -28,6 +28,7 @@ var (
 
 // ==================== FUNZIONI DI RIAVVIO ====================
 
+// RebootLocal riavvia la macchina corrente (solo Linux)
 func RebootLocal() error {
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("reboot locale supportato solo su Linux")
@@ -36,44 +37,103 @@ func RebootLocal() error {
 }
 
 // RebootRemoteViaTelnet invia il comando reboot via Telnet (client esterno)
-func RebootRemoteViaTelnet(machine RemoteMachine) error {
-	cfg := machine.Telnet
-	if cfg.Host == "" {
-		return fmt.Errorf("configurazione Telnet mancante per macchina %s", machine.ID)
+func RebootRemoteViaTelnet(machine *RemoteMachine) error {
+	if machine.Host == "" {
+		return fmt.Errorf("IP non risolto per macchina %s", machine.ID)
 	}
-	commands := []string{cfg.Username, cfg.Password}
-	rebootCmd := cfg.RebootCommand
+
+	// Ottieni i parametri
+	username := machine.TelnetUsername
+	password := machine.TelnetPassword
+	sudoPwd := machine.SudoPassword
+	port := machine.Telnet.Port
+	if port == 0 {
+		port = 23
+	}
+	rebootCmd := machine.Telnet.RebootCommand
 	if rebootCmd == "" {
 		rebootCmd = "reboot"
 	}
-	if strings.Contains(rebootCmd, "sudo") && cfg.SudoPassword != "" {
-		commands = append(commands, rebootCmd, cfg.SudoPassword)
+
+	// Se mancano le credenziali, prova a ricaricarle da remote_creds.enc
+	if username == "" || password == "" {
+		log.Printf("Credenziali mancanti per %s, tentativo di ricarica...", machine.ID)
+		remoteCreds, err := loadRemoteCredentials(currentDataDir)
+		if err != nil {
+			return fmt.Errorf("errore caricamento credenziali: %w", err)
+		}
+		if remoteCreds != nil && remoteCreds.Machines != nil {
+			if cred, ok := remoteCreds.Machines[machine.ID]; ok {
+				// Aggiorna la configurazione globale
+				for i := range config.RemoteMachines {
+					if config.RemoteMachines[i].ID == machine.ID {
+						config.RemoteMachines[i].TelnetUsername = cred.TelnetUsername
+						config.RemoteMachines[i].TelnetPassword = cred.TelnetPassword
+						config.RemoteMachines[i].SudoPassword = cred.SudoPassword
+						// Aggiorna anche la copia locale
+						machine.TelnetUsername = cred.TelnetUsername
+						machine.TelnetPassword = cred.TelnetPassword
+						machine.SudoPassword = cred.SudoPassword
+						username = cred.TelnetUsername
+						password = cred.TelnetPassword
+						sudoPwd = cred.SudoPassword
+						break
+					}
+				}
+			}
+		}
+		if username == "" || password == "" {
+			return fmt.Errorf("credenziali Telnet non configurate per %s. Vai su /admin/remote-credentials per configurarle", machine.Name)
+		}
+	}
+
+	// Prepara i comandi da inviare via telnet
+	commands := []string{username, password}
+
+	// Gestione sudo con password
+	if strings.Contains(rebootCmd, "sudo") && sudoPwd != "" {
+		// Usa echo + sudo -S per passare la password in modo non interattivo
+		fullCmd := fmt.Sprintf("echo '%s' | sudo -S %s", sudoPwd, rebootCmd)
+		commands = append(commands, fullCmd)
 	} else {
 		commands = append(commands, rebootCmd)
 	}
-	cmd := exec.Command("telnet", cfg.Host, fmt.Sprintf("%d", cfg.Port))
+
+	// Esegui telnet esterno
+	cmd := exec.Command("telnet", machine.Host, fmt.Sprintf("%d", port))
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return err
 	}
+
+	// Avvia il comando
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+
+	// Invia i comandi con pause
 	for _, c := range commands {
 		time.Sleep(800 * time.Millisecond)
 		if _, err := stdin.Write([]byte(c + "\n")); err != nil {
 			return err
 		}
 	}
+
+	// Aspetta che il comando venga elaborato
 	time.Sleep(2 * time.Second)
 	stdin.Close()
-	log.Printf("Comando reboot inviato a %s (%s)", machine.Name, machine.ID)
+
+	log.Printf("Comando reboot inviato a %s (%s)", machine.Name, machine.Host)
 	return nil
 }
 
 // WaitForRemoteReachable attende che la macchina remota sia raggiungibile (tentativi ogni 30 sec)
-func WaitForRemoteReachable(machine RemoteMachine, maxWaitSec int, opID string) bool {
-	address := fmt.Sprintf("%s:%d", machine.Telnet.Host, machine.Telnet.Port)
+func WaitForRemoteReachable(machine *RemoteMachine, maxWaitSec int, opID string) bool {
+	if machine.Host == "" {
+		updateRebootStatus(opID, "error", "IP non risolto per la macchina remota")
+		return false
+	}
+	address := fmt.Sprintf("%s:%d", machine.Host, machine.Telnet.Port)
 	timeout := time.After(time.Duration(maxWaitSec) * time.Second)
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
@@ -87,13 +147,13 @@ func WaitForRemoteReachable(machine RemoteMachine, maxWaitSec int, opID string) 
 			updateRebootStatus(opID, "error", "Timeout: la macchina remota non risponde dopo il riavvio")
 			return false
 		case <-ticker.C:
-			msg := fmt.Sprintf("Tentativo %d/%d: controllo raggiungibilità di %s...", attempt, maxAttempts, machine.Name)
+			msg := fmt.Sprintf("Tentativo %d/%d: controllo raggiungibilità di %s (%s)...", attempt, maxAttempts, machine.Name, machine.Host)
 			updateRebootStatus(opID, "waiting_remote", msg)
 
 			conn, err := net.DialTimeout("tcp", address, 5*time.Second)
 			if err == nil {
 				conn.Close()
-				updateRebootStatus(opID, "waiting_remote", fmt.Sprintf("✅ %s è raggiungibile!", machine.Name))
+				updateRebootStatus(opID, "waiting_remote", fmt.Sprintf("✅ %s (%s) è raggiungibile!", machine.Name, machine.Host))
 				return true
 			}
 			attempt++
@@ -102,7 +162,7 @@ func WaitForRemoteReachable(machine RemoteMachine, maxWaitSec int, opID string) 
 }
 
 // startRemoteReboot esegue il reboot remoto e attende la raggiungibilità (senza reboot locale)
-func startRemoteReboot(machine RemoteMachine) string {
+func startRemoteReboot(machine *RemoteMachine) string {
 	id := fmt.Sprintf("remote_%s_%d", machine.ID, time.Now().UnixNano())
 	op := &RebootOperation{
 		ID:        id,
@@ -115,22 +175,22 @@ func startRemoteReboot(machine RemoteMachine) string {
 	rebootMutex.Unlock()
 
 	go func() {
-		updateRebootStatus(id, "rebooting_remote", fmt.Sprintf("Riavvio %s in corso...", machine.Name))
+		updateRebootStatus(id, "rebooting_remote", fmt.Sprintf("Riavvio %s (%s) in corso...", machine.Name, machine.Host))
 		if err := RebootRemoteViaTelnet(machine); err != nil {
 			updateRebootStatus(id, "error", fmt.Sprintf("Errore riavvio remoto: %v", err))
 			return
 		}
-		updateRebootStatus(id, "waiting_remote", fmt.Sprintf("Attesa che %s si riavvii (max 2 minuti)...", machine.Name))
+		updateRebootStatus(id, "waiting_remote", fmt.Sprintf("Attesa che %s (%s) si riavvii (max 2 minuti)...", machine.Name, machine.Host))
 		if !WaitForRemoteReachable(machine, 120, id) {
 			return
 		}
-		updateRebootStatus(id, "completed", fmt.Sprintf("✅ %s è tornato online!", machine.Name))
+		updateRebootStatus(id, "completed", fmt.Sprintf("✅ %s (%s) è tornato online!", machine.Name, machine.Host))
 	}()
 	return id
 }
 
 // startCascadeReboot esegue reboot remoto, attende raggiungibilità e poi riavvia locale
-func startCascadeReboot(machine RemoteMachine) string {
+func startCascadeReboot(machine *RemoteMachine) string {
 	id := fmt.Sprintf("cascade_%s_%d", machine.ID, time.Now().UnixNano())
 	op := &RebootOperation{
 		ID:        id,
@@ -143,12 +203,12 @@ func startCascadeReboot(machine RemoteMachine) string {
 	rebootMutex.Unlock()
 
 	go func() {
-		updateRebootStatus(id, "rebooting_remote", fmt.Sprintf("Riavvio %s in corso...", machine.Name))
+		updateRebootStatus(id, "rebooting_remote", fmt.Sprintf("Riavvio %s (%s) in corso...", machine.Name, machine.Host))
 		if err := RebootRemoteViaTelnet(machine); err != nil {
 			updateRebootStatus(id, "error", fmt.Sprintf("Errore riavvio remoto: %v", err))
 			return
 		}
-		updateRebootStatus(id, "waiting_remote", fmt.Sprintf("Attesa che %s si riavvii (max 2 minuti)...", machine.Name))
+		updateRebootStatus(id, "waiting_remote", fmt.Sprintf("Attesa che %s (%s) si riavvii (max 2 minuti)...", machine.Name, machine.Host))
 		if !WaitForRemoteReachable(machine, 120, id) {
 			return
 		}
@@ -162,6 +222,7 @@ func startCascadeReboot(machine RemoteMachine) string {
 	return id
 }
 
+// updateRebootStatus aggiorna lo stato di un'operazione (thread-safe)
 func updateRebootStatus(opID, status, message string) {
 	rebootMutex.Lock()
 	defer rebootMutex.Unlock()
@@ -226,9 +287,17 @@ func rebootRemoteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	machineID := r.URL.Query().Get("id")
+	if machineID == "" {
+		http.Error(w, "Missing machine id", http.StatusBadRequest)
+		return
+	}
 	machine, found := findRemoteMachine(machineID)
 	if !found {
 		http.Error(w, "Macchina remota non trovata", http.StatusNotFound)
+		return
+	}
+	if machine.Host == "" {
+		http.Error(w, "IP non risolto per questa macchina", http.StatusInternalServerError)
 		return
 	}
 	opID := startRemoteReboot(machine)
@@ -247,9 +316,17 @@ func rebootCascadeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	machineID := r.URL.Query().Get("id")
+	if machineID == "" {
+		http.Error(w, "Missing machine id", http.StatusBadRequest)
+		return
+	}
 	machine, found := findRemoteMachine(machineID)
 	if !found {
 		http.Error(w, "Macchina remota non trovata", http.StatusNotFound)
+		return
+	}
+	if machine.Host == "" {
+		http.Error(w, "IP non risolto per questa macchina", http.StatusInternalServerError)
 		return
 	}
 	opID := startCascadeReboot(machine)
@@ -290,11 +367,12 @@ func rebootStatusHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(resp)
 }
 
-func findRemoteMachine(id string) (RemoteMachine, bool) {
-	for _, m := range config.RemoteMachines {
-		if m.ID == id {
-			return m, true
+// findRemoteMachine restituisce un puntatore alla macchina remota e un bool
+func findRemoteMachine(id string) (*RemoteMachine, bool) {
+	for i := range config.RemoteMachines {
+		if config.RemoteMachines[i].ID == id {
+			return &config.RemoteMachines[i], true
 		}
 	}
-	return RemoteMachine{}, false
+	return nil, false
 }

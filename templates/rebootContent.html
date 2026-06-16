@@ -3,13 +3,20 @@
 <div class="card-modern">
     <div class="card-header">Opzioni di riavvio</div>
     <div class="card-body">
-        <div style="display: flex; gap: 1rem; flex-wrap: wrap;">
+        <div style="display: flex; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem;">
+            <!-- Riavvio locale (unico) -->
             <button id="rebootLocal" class="button">🖥️ Riavvia questa macchina</button>
+
+            <!-- Riavvio singolo per ogni macchina remota -->
             {{range .RemoteMachines}}
-            <button class="rebootRemoteBtn button" data-id="{{.ID}}">🔄 Riavvia {{.Name}}</button>
+                {{if ne .ID "local"}}
+                <button class="rebootRemoteBtn button" data-id="{{.ID}}">🔄 Riavvia {{.Name}} ({{.Host}})</button>
+                {{end}}
             {{end}}
-            {{range .RemoteMachines}}
-            <button class="rebootCascadeBtn button" data-id="{{.ID}}">⚙️ Riavvio in cascata ({{.Name}})</button>
+
+            <!-- Unico pulsante per cascata -->
+            {{if gt (len .RemoteMachines) 1}}
+            <button id="rebootCascadeAll" class="button">⚙️ Riavvio in cascata (tutte le macchine)</button>
             {{end}}
         </div>
         <div id="rebootStatus" style="margin-top: 1rem; padding: 0.5rem; border-radius: 4px; display: none;"></div>
@@ -130,14 +137,14 @@
         });
     });
 
-    document.querySelectorAll('.rebootCascadeBtn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const id = btn.dataset.id;
-            const name = btn.textContent.trim().replace('⚙️ Riavvio in cascata (', '').replace(')', '');
-            if (confirm('⚠️ ATTENZIONE: il riavvio in cascata riavvierà prima ' + name + ' e poi la macchina principale. Proseguire?')) {
-                callReboot('/api/reboot-cascade?id=' + encodeURIComponent(id), true);
+    // Pulsante "Riavvio in cascata (tutte le macchine)"
+    const cascadeBtn = document.getElementById('rebootCascadeAll');
+    if (cascadeBtn) {
+        cascadeBtn.addEventListener('click', () => {
+            if (confirm('⚠️ ATTENZIONE: il riavvio in cascata riavvierà tutte le macchine remote una alla volta e poi la macchina principale. Proseguire?')) {
+                callReboot('/api/reboot-cascade-all', true);
             }
         });
-    });
+    }
 </script>
 {{end}}

@@ -49,7 +49,11 @@
             <li class="nav-item sub-nav"><a href="/admin/settings" class="nav-link"><span class="icon">⚙️</span> Impostazioni sistema</a></li>
             {{end}}
             {{end}}
-
+{{if .IsAdmin}}
+<li class="nav-item">
+    <a href="/admin/remote-credentials" class="nav-link"><span class="icon">🔐</span> Credenziali remote</a>
+</li>
+{{end}}
             {{if .IsAdmin}}
             <li class="nav-item">
                 <a href="/reboot" class="nav-link"><span class="icon">🔄</span> Reboot sistema</a>
@@ -84,6 +88,8 @@
             {{template "adminRolesContent" .}}
         {{else if eq .ContentTemplate "adminUserEditContent"}}
             {{template "adminUserEditContent" .}}
+        {{else if eq .ContentTemplate "remoteCredentialsContent"}}
+            {{template "remoteCredentialsContent" .}}                
         {{else if eq .ContentTemplate "rebootContent"}}
             {{template "rebootContent" .}}    
         {{else}}

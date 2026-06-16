@@ -63,8 +63,34 @@ func init() {
 		log.Printf("Errore caricamento ruoli, uso default: %v", err)
 		saveRoles(currentDataDir)
 	}
+
+	// Carica credenziali remote (dopo che currentDataDir è impostato)
+	loadRemoteCredentialsFromDir()
 }
 
+// loadRemoteCredentialsFromDir carica le credenziali remote e le applica a config.RemoteMachines
+func loadRemoteCredentialsFromDir() {
+	remoteCreds, err := loadRemoteCredentials(currentDataDir)
+	if err != nil {
+		log.Printf("Errore caricamento credenziali remote: %v", err)
+		return
+	}
+	if remoteCreds != nil && remoteCreds.Machines != nil {
+		for i := range config.RemoteMachines {
+			machineID := config.RemoteMachines[i].ID
+			if cred, ok := remoteCreds.Machines[machineID]; ok {
+				config.RemoteMachines[i].FTP.Username = cred.FTPUsername
+				config.RemoteMachines[i].FTP.Password = cred.FTPPassword
+				config.RemoteMachines[i].Telnet.Username = cred.TelnetUsername
+				config.RemoteMachines[i].Telnet.Password = cred.TelnetPassword
+				config.RemoteMachines[i].Telnet.SudoPassword = cred.SudoPassword
+			}
+		}
+		log.Printf("Credenziali remote caricate per %d macchine", len(remoteCreds.Machines))
+	} else {
+		log.Println("AVVISO: Nessuna credenziale remota configurata. Usare l'interfaccia admin per impostarle.")
+	}
+}
 func initDefaultUsers() {
 	if len(users) > 0 {
 		return

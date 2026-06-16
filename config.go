@@ -6,36 +6,41 @@ import (
 	"os"
 )
 
+var remoteCreds *RemoteCredentials
+
 type LogCategory struct {
 	Name        string   `json:"name"`
 	Directories []string `json:"directories"`
 }
 type FTPConfig struct {
-	Host      string `json:"host"`
 	Port      int    `json:"port"`
-	Username  string `json:"username"`
-	Password  string `json:"password"`
 	RemoteDir string `json:"remote_dir"`
 	Passive   bool   `json:"passive"`
+	Username  string `json:"-"` // non serializzato, popolato da remote_creds
+	Password  string `json:"-"`
 }
 
 type TelnetConfig struct {
-	Host          string `json:"host"`
 	Port          int    `json:"port"`
-	Username      string `json:"username"`
-	Password      string `json:"password"`
 	RebootCommand string `json:"reboot_command"`
-	SudoPassword  string `json:"sudo_password"` // password per sudo (opzionale)
 	TimeoutSec    int    `json:"timeout_seconds"`
+	Username      string `json:"-"`
+	Password      string `json:"-"`
+	SudoPassword  string `json:"-"`
 }
 
 type RemoteMachine struct {
-	ID     string       `json:"id"`
-	Name   string       `json:"name"`
-	FTP    FTPConfig    `json:"ftp"`
-	Telnet TelnetConfig `json:"telnet"`
+	ID             string       `json:"id"`
+	Name           string       `json:"name"`
+	Host           string       `json:"-"` // risolto da interfaces
+	FTPUsername    string       `json:"-"` // caricato da remote_creds
+	FTPPassword    string       `json:"-"`
+	TelnetUsername string       `json:"-"`
+	TelnetPassword string       `json:"-"`
+	SudoPassword   string       `json:"-"`
+	FTP            FTPConfig    `json:"ftp"`
+	Telnet         TelnetConfig `json:"telnet"`
 }
-
 type RemoteCPUConfig struct {
 	FTP    FTPConfig    `json:"ftp"`
 	Telnet TelnetConfig `json:"telnet"`
@@ -72,6 +77,7 @@ type Config struct {
 	CfWebFile               string          `json:"cf_web_file"`
 	PointsCmd               string          `json:"points_cmd"`
 	NetworkInterfacesFile   string          `json:"network_interfaces_file"`
+	RemoteInterfacesPattern string          `json:"remote_interfaces_pattern"`
 	AnalogInputsCmd         string          `json:"analog_inputs_cmd"`
 	AnalogInputsDescFile    string          `json:"analog_inputs_desc_file"`
 	AnalogInputsDescBase    string          `json:"analog_inputs_desc_base"`
@@ -89,4 +95,92 @@ func initConfig() {
 	if err := json.Unmarshal(data, &config); err != nil {
 		log.Fatal("Errore parsing config.json:", err)
 	}
+
+	// Inizializza currentDataDir PRIMA di usarlo
+	currentDataDir = config.DataDir
+	if currentDataDir == "" {
+		currentDataDir = "./data"
+	}
+	// Crea la directory se non esiste
+	if err := os.MkdirAll(currentDataDir, 0700); err != nil {
+		log.Printf("Errore creazione directory dati: %v", err)
+	}
+
+	// 1. Risolvi IP delle macchine remote (file interfaces_%d)
+	if err := ResolveRemoteMachines(); err != nil {
+		log.Printf("Errore risoluzione IP remoti: %v", err)
+	}
+
+	// 2. Aggiungi la macchina locale (se non già presente)
+	foundLocal := false
+	for _, m := range config.RemoteMachines {
+		if m.ID == "local" {
+			foundLocal = true
+			break
+		}
+	}
+	if !foundLocal {
+		localIP := getLocalIP()
+		localMachine := RemoteMachine{
+			ID:   "local",
+			Name: "Questa macchina (locale)",
+			Host: localIP,
+			FTP: FTPConfig{
+				Port:      21,
+				RemoteDir: "/backup",
+				Passive:   true,
+			},
+			Telnet: TelnetConfig{
+				Port:          23,
+				RebootCommand: "sudo reboot",
+				TimeoutSec:    10,
+			},
+		}
+		config.RemoteMachines = append(config.RemoteMachines, localMachine)
+		log.Printf("Macchina locale aggiunta con IP: %s", localIP)
+	}
+
+	// 3. Carica credenziali remote (se presenti) e applicale
+	remoteCreds, err := loadRemoteCredentials(currentDataDir)
+	if err != nil {
+		log.Printf("Errore caricamento credenziali remote: %v", err)
+		remoteCreds = nil
+	}
+
+	if remoteCreds != nil && remoteCreds.Machines != nil {
+		log.Printf("Credenziali caricate per %d macchine", len(remoteCreds.Machines))
+		for id, cred := range remoteCreds.Machines {
+			log.Printf("  %s: FTP=%s, Telnet=%s", id, cred.FTPUsername, cred.TelnetUsername)
+		}
+		for i := range config.RemoteMachines {
+			machineID := config.RemoteMachines[i].ID
+			if cred, ok := remoteCreds.Machines[machineID]; ok {
+				config.RemoteMachines[i].FTP.Username = cred.FTPUsername
+				config.RemoteMachines[i].FTP.Password = cred.FTPPassword
+				config.RemoteMachines[i].Telnet.Username = cred.TelnetUsername
+				config.RemoteMachines[i].Telnet.Password = cred.TelnetPassword
+				config.RemoteMachines[i].Telnet.SudoPassword = cred.SudoPassword
+			}
+		}
+	} else {
+		log.Println("AVVISO: Nessuna credenziale remota configurata. Usare l'interfaccia admin per impostarle.")
+	}
+}
+
+// getLocalIP restituisce l'IP della macchina locale (priorità eth2, poi primo IP trovato)
+func getLocalIP() string {
+	localIP, err := GetLocalIPFromFile()
+	if err != nil || localIP == "" {
+		// Fallback: usa GetNetworkInterfaces()
+		interfaces, err := GetNetworkInterfaces()
+		if err == nil {
+			for _, iface := range interfaces {
+				if iface.Address != "" {
+					return iface.Address
+				}
+			}
+		}
+		return "Non disponibile"
+	}
+	return localIP
 }

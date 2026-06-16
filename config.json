@@ -29,6 +29,7 @@
     "cf_web_file": "/home/andrea/Documenti/GitDea/test/cfweb/cf_web.txt",
     "points_cmd": "/usr/local/bin/rsl_smm -p",
     "network_interfaces_file": "/home/andrea/Documenti/GitDea/test/etcnetwork/interfaces",
+    "remote_interfaces_pattern": "/home/andrea/Documenti/GitDea/test/etcnetwork/interfaces_%d",
     "analog_inputs_cmd": "/usr/local/bin/rsl_smm",
     "analog_inputs_desc_file": "/home/andrea/Documenti/GitDea/test/etcrtu/cf_%d_104_c.conf",
     "info_version_desc_file": "/home/andrea/Documenti/GitDea/test/etccfg/",
@@ -39,20 +40,14 @@
             "id": "cpu2",
             "name": "CPU secondaria",
 			"ftp": {
-				"host": "192.168.237.128",
 				"port": 21,
-				"username": "andrea2",
-				"password": "Dea2026!",
 				"remote_dir": "/backup",
 				"passive": true
 			},
             "telnet": {
                 "host": "192.168.237.128",
                 "port": 23,
-                "username": "andrea2",
-                "password": "Dea2026!",
                 "reboot_command": "sudo reboot",
-                "sudo_password": "Dea2026!",
                 "timeout_seconds": 10
             }
         }

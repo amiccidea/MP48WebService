@@ -132,3 +132,34 @@ func loadRoles(dataDir string) error {
 	roles = loaded
 	return nil
 }
+
+func loadRemoteCredentials(dataDir string) (*RemoteCredentials, error) {
+	encrypted, err := os.ReadFile(filepath.Join(dataDir, "remote_creds.enc"))
+	if os.IsNotExist(err) {
+		return nil, nil // file non esiste
+	}
+	if err != nil {
+		return nil, err
+	}
+	data, err := decryptData(encrypted)
+	if err != nil {
+		return nil, err
+	}
+	var creds RemoteCredentials
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return nil, err
+	}
+	return &creds, nil
+}
+
+func saveRemoteCredentials(dataDir string, creds *RemoteCredentials) error {
+	data, err := json.Marshal(creds)
+	if err != nil {
+		return err
+	}
+	encrypted, err := encryptData(data)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dataDir, "remote_creds.enc"), encrypted, 0644)
+}

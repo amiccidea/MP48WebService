@@ -43,3 +43,15 @@ type LogFileInfo struct {
 	Category    string `json:"category"`
 	Directory   string `json:"directory"`
 }
+
+// In models.go
+type RemoteCredential struct {
+	FTPUsername    string `json:"ftp_username"`
+	FTPPassword    string `json:"ftp_password"`
+	TelnetUsername string `json:"telnet_username"`
+	TelnetPassword string `json:"telnet_password"`
+	SudoPassword   string `json:"sudo_password"`
+}
+type RemoteCredentials struct {
+	Machines map[string]RemoteCredential `json:"machines"` // chiave: ID macchina (es. "cpu2")
+}
