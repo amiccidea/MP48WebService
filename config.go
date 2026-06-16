@@ -25,6 +25,7 @@ type TelnetConfig struct {
 	Username      string `json:"username"`
 	Password      string `json:"password"`
 	RebootCommand string `json:"reboot_command"`
+	SudoPassword  string `json:"sudo_password"` // password per sudo (opzionale)
 	TimeoutSec    int    `json:"timeout_seconds"`
 }
 

@@ -39,19 +39,20 @@
             "id": "cpu2",
             "name": "CPU secondaria",
 			"ftp": {
-				"host": "192.168.1.100",
+				"host": "192.168.237.128",
 				"port": 21,
-				"username": "ftpuser",
-				"password": "ftppassword",
+				"username": "andrea2",
+				"password": "Dea2026!",
 				"remote_dir": "/backup",
 				"passive": true
 			},
             "telnet": {
-                "host": "192.168.1.100",
+                "host": "192.168.237.128",
                 "port": 23,
-                "username": "root",
-                "password": "rootpass",
-                "reboot_command": "reboot",
+                "username": "andrea2",
+                "password": "Dea2026!",
+                "reboot_command": "sudo reboot",
+                "sudo_password": "Dea2026!",
                 "timeout_seconds": 10
             }
         }
