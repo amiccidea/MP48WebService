@@ -376,3 +376,65 @@ func findRemoteMachine(id string) (*RemoteMachine, bool) {
 	}
 	return nil, false
 }
+
+// rebootCascadeAllHandler avvia il riavvio in cascata di TUTTE le macchine remote
+func rebootCascadeAllHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_, isAdmin := getUserContext(r)
+	if !isAdmin {
+		http.Error(w, "Accesso negato", http.StatusForbidden)
+		return
+	}
+	opID := startCascadeAllReboot()
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"id": opID})
+}
+
+// startCascadeAllReboot avvia il riavvio in cascata di TUTTE le macchine remote
+func startCascadeAllReboot() string {
+	id := fmt.Sprintf("cascade_all_%d", time.Now().UnixNano())
+	op := &RebootOperation{
+		ID:        id,
+		Status:    "pending",
+		Message:   "Avvio riavvio in cascata di tutte le macchine...",
+		Timestamp: time.Now(),
+	}
+	rebootMutex.Lock()
+	rebootOps[id] = op
+	rebootMutex.Unlock()
+
+	go func() {
+		// 1. Riavvia tutte le macchine remote (esclusa "local")
+		for _, machine := range config.RemoteMachines {
+			if machine.ID == "local" {
+				continue
+			}
+			// Riavvio remoto
+			updateRebootStatus(id, "rebooting_remote", fmt.Sprintf("Riavvio %s (%s) in corso...", machine.Name, machine.Host))
+			// Passiamo una copia per evitare problemi di concorrenza
+			machineCopy := machine
+			if err := RebootRemoteViaTelnet(&machineCopy); err != nil {
+				updateRebootStatus(id, "error", fmt.Sprintf("Errore riavvio remoto %s: %v", machine.Name, err))
+				return
+			}
+			// Attendi che il remoto sia raggiungibile
+			updateRebootStatus(id, "waiting_remote", fmt.Sprintf("Attesa che %s (%s) si riavvii (max 2 minuti)...", machine.Name, machine.Host))
+			if !WaitForRemoteReachable(&machineCopy, 120, id) {
+				updateRebootStatus(id, "error", fmt.Sprintf("Timeout: %s non risponde dopo il riavvio", machine.Name))
+				return
+			}
+			updateRebootStatus(id, "waiting_remote", fmt.Sprintf("✅ %s (%s) è raggiungibile!", machine.Name, machine.Host))
+		}
+		// 2. Riavvio locale
+		updateRebootStatus(id, "rebooting_local", "Riavvio macchina principale in corso...")
+		if err := RebootLocal(); err != nil {
+			updateRebootStatus(id, "error", fmt.Sprintf("Errore riavvio locale: %v", err))
+			return
+		}
+		updateRebootStatus(id, "completed", "Riavvio in cascata completato. Tutte le macchine sono state riavviate.")
+	}()
+	return id
+}

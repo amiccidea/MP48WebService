@@ -85,6 +85,7 @@ func main() {
 	http.HandleFunc("/api/reboot-local", authMiddleware(adminMiddleware(rebootLocalHandler)))
 	http.HandleFunc("/api/reboot-remote", authMiddleware(adminMiddleware(rebootRemoteHandler)))
 	http.HandleFunc("/api/reboot-cascade", authMiddleware(adminMiddleware(rebootCascadeHandler)))
+	http.HandleFunc("/api/reboot-cascade-all", authMiddleware(adminMiddleware(rebootCascadeAllHandler)))
 	http.HandleFunc("/api/reboot-status", authMiddleware(adminMiddleware(rebootStatusHandler)))
 
 	http.HandleFunc("/admin/remote-credentials", authMiddleware(adminMiddleware(func(w http.ResponseWriter, r *http.Request) {
