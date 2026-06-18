@@ -50,7 +50,7 @@ func FTPUploadFile(machine RemoteMachine, localPath, remotePath string) error {
 		return err
 	}
 
-	// Attiva modalità passiva (richiede PASV)
+	// Attiva modalità passiva
 	dataPort, err := passiveMode(conn)
 	if err != nil {
 		return err
@@ -60,6 +60,7 @@ func FTPUploadFile(machine RemoteMachine, localPath, remotePath string) error {
 	dir := filepath.Dir(remotePath)
 	if err := mkdirRecursiveFTPNative(conn, dir); err != nil {
 		log.Printf("Avviso creazione directory: %v", err)
+		// Continua comunque, forse la directory esiste già
 	}
 
 	// Apre il file locale
@@ -96,24 +97,64 @@ func FTPUploadFile(machine RemoteMachine, localPath, remotePath string) error {
 	return nil
 }
 
-// mkdirRecursiveFTPNative crea ricorsivamente le directory remote (versione nativa)
+// mkdirRecursiveFTPNative crea ricorsivamente le directory remote (versione robusta)
 func mkdirRecursiveFTPNative(conn net.Conn, remoteDir string) error {
-	if remoteDir == "/" || remoteDir == "." {
+	if remoteDir == "" || remoteDir == "/" || remoteDir == "." {
 		return nil
 	}
-	if err := sendFTPCommand(conn, "CWD "+remoteDir); err == nil {
-		return nil
+
+	// Se inizia con /, parti dalla root
+	var parts []string
+	var currentPath string
+	if strings.HasPrefix(remoteDir, "/") {
+		parts = strings.Split(strings.TrimPrefix(remoteDir, "/"), "/")
+		currentPath = "/"
+	} else {
+		parts = strings.Split(remoteDir, "/")
+		currentPath = ""
 	}
-	parent := filepath.Dir(remoteDir)
-	if parent != remoteDir {
-		if err := mkdirRecursiveFTPNative(conn, parent); err != nil {
+
+	for _, part := range parts {
+		if part == "" {
+			continue
+		}
+		if currentPath == "/" {
+			currentPath = "/" + part
+		} else if currentPath == "" {
+			currentPath = part
+		} else {
+			currentPath = currentPath + "/" + part
+		}
+
+		// Prova CWD
+		if err := sendFTPCommand(conn, "CWD "+currentPath); err != nil {
+			return fmt.Errorf("errore CWD: %w", err)
+		}
+		resp, err := readFTPResponseString(conn)
+		if err != nil {
 			return err
 		}
+		if len(resp) >= 3 && (resp[0] == '2' || resp[0] == '1') {
+			continue
+		}
+		// Se 5xx, prova MKD
+		if len(resp) >= 3 && resp[0] == '5' {
+			if err := sendFTPCommand(conn, "MKD "+currentPath); err != nil {
+				return fmt.Errorf("errore MKD: %w", err)
+			}
+			mkdResp, err := readFTPResponseString(conn)
+			if err != nil {
+				return err
+			}
+			if len(mkdResp) >= 3 && mkdResp[0] == '5' {
+				if strings.Contains(mkdResp, "521") || strings.Contains(mkdResp, "exists") {
+					continue
+				}
+				return fmt.Errorf("errore creazione directory %s: %s", currentPath, mkdResp)
+			}
+			log.Printf("Directory creata: %s", currentPath)
+		}
 	}
-	if err := sendFTPCommand(conn, "MKD "+remoteDir); err != nil {
-		return err
-	}
-	readFTPResponse(conn) // ignora errore
 	return nil
 }
 
@@ -154,7 +195,8 @@ func readFTPResponse(conn net.Conn) error {
 		return fmt.Errorf("risposta FTP troppo corta: %s", resp)
 	}
 	code := resp[:3]
-	if code[0] != '2' && code[0] != '1' {
+	// Accetta 1xx, 2xx e 3xx come risposte non negative
+	if code[0] != '1' && code[0] != '2' && code[0] != '3' {
 		return fmt.Errorf("errore FTP: %s", resp)
 	}
 	return nil
@@ -172,9 +214,11 @@ func readFTPResponseString(conn net.Conn) (string, error) {
 		full.WriteString(data)
 		if strings.Contains(data, "\r\n") {
 			lines := strings.Split(full.String(), "\r\n")
-			lastLine := lines[len(lines)-2]
-			if len(lastLine) >= 3 && lastLine[3] == ' ' {
-				break
+			if len(lines) >= 2 {
+				lastLine := lines[len(lines)-2]
+				if len(lastLine) >= 3 && lastLine[3] == ' ' {
+					break
+				}
 			}
 		}
 	}
@@ -183,6 +227,10 @@ func readFTPResponseString(conn net.Conn) (string, error) {
 
 // FTPUploadDirectory carica ricorsivamente una directory
 func FTPUploadDirectory(machine RemoteMachine, localDir, remoteDir string) error {
+	// Assicura che remoteDir sia assoluto
+	if !strings.HasPrefix(remoteDir, "/") {
+		remoteDir = "/" + remoteDir
+	}
 	return filepath.Walk(localDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -194,4 +242,66 @@ func FTPUploadDirectory(machine RemoteMachine, localDir, remoteDir string) error
 		}
 		return FTPUploadFile(machine, path, remotePath)
 	})
+}
+
+// buildRemotePath sostituisce il nome utente nel percorso locale con quello FTP
+func buildRemotePath(localPath, ftpUsername string) string {
+	if strings.HasPrefix(localPath, "/home/") {
+		parts := strings.SplitN(localPath, "/", 4)
+		if len(parts) >= 4 {
+			// Restituisci /home/andrea2/Documenti/...
+			return "/" + filepath.Join(parts[1], ftpUsername, parts[3])
+		}
+	}
+	// Per altri percorsi, aggiungi / se non c'è
+	if !strings.HasPrefix(localPath, "/") {
+		return "/" + localPath
+	}
+	return localPath
+}
+
+// SyncFileToAllRemotes carica un singolo file su tutte le macchine remote
+func SyncFileToAllRemotes(localPath string) error {
+	var lastErr error
+	for _, machine := range config.RemoteMachines {
+		if machine.ID == "local" {
+			continue
+		}
+		if machine.FTP.Username == "" || machine.FTP.Password == "" {
+			log.Printf("⚠️ Credenziali FTP mancanti per %s, salto...", machine.Name)
+			continue
+		}
+		remotePath := buildRemotePath(localPath, machine.FTP.Username)
+		log.Printf("📤 Caricamento %s su %s (%s) -> %s", localPath, machine.Name, machine.Host, remotePath)
+		if err := FTPUploadFile(machine, localPath, remotePath); err != nil {
+			log.Printf("❌ Errore upload su %s: %v", machine.Name, err)
+			lastErr = err
+			continue
+		}
+		log.Printf("✅ File caricato su %s", machine.Name)
+	}
+	return lastErr
+}
+
+// SyncDirToAllRemotes carica ricorsivamente una directory su tutte le macchine remote
+func SyncDirToAllRemotes(localDir string) error {
+	var lastErr error
+	for _, machine := range config.RemoteMachines {
+		if machine.ID == "local" {
+			continue
+		}
+		if machine.FTP.Username == "" || machine.FTP.Password == "" {
+			log.Printf("⚠️ Credenziali FTP mancanti per %s, salto...", machine.Name)
+			continue
+		}
+		remoteDir := buildRemotePath(localDir, machine.FTP.Username)
+		log.Printf("📤 Caricamento directory %s su %s (%s) -> %s", localDir, machine.Name, machine.Host, remoteDir)
+		if err := FTPUploadDirectory(machine, localDir, remoteDir); err != nil {
+			log.Printf("❌ Errore upload directory su %s: %v", machine.Name, err)
+			lastErr = err
+			continue
+		}
+		log.Printf("✅ Directory caricata su %s", machine.Name)
+	}
+	return lastErr
 }

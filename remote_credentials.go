@@ -89,6 +89,13 @@ func remoteCredentialsSaveHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Errore salvataggio", http.StatusInternalServerError)
 		return
 	}
+	// Sincronizza asincrono
+	go func() {
+		// Sincronizza l'intera directory data (dove stanno remote_creds.enc)
+		if err := SyncDirToAllRemotes(currentDataDir); err != nil {
+			log.Printf("Errore sincronizzazione directory data: %v", err)
+		}
+	}()
 
 	// Aggiorna la variabile globale (per il caricamento immediato)
 	remoteCreds, _ = loadRemoteCredentials(currentDataDir)

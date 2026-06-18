@@ -41,7 +41,7 @@
             "name": "CPU secondaria",
 			"ftp": {
 				"port": 21,
-				"remote_dir": "/backup",
+				"remote_dir": "/",
 				"passive": true
 			},
             "telnet": {

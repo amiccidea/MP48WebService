@@ -88,6 +88,23 @@ func main() {
 	http.HandleFunc("/api/reboot-cascade-all", authMiddleware(adminMiddleware(rebootCascadeAllHandler)))
 	http.HandleFunc("/api/reboot-status", authMiddleware(adminMiddleware(rebootStatusHandler)))
 
+	http.HandleFunc("/api/sync-remotes", authMiddleware(adminMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		// Sincronizza entrambe le directory (data e configurazione)
+		go func() {
+			if err := SyncDirToAllRemotes(currentDataDir); err != nil {
+				log.Printf("Errore sync data: %v", err)
+			}
+			if err := SyncDirToAllRemotes(config.CurrentConfigurationDir); err != nil {
+				log.Printf("Errore sync config: %v", err)
+			}
+		}()
+		w.Write([]byte("Sincronizzazione avviata in background"))
+	})))
+
 	http.HandleFunc("/admin/remote-credentials", authMiddleware(adminMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			remoteCredentialsPageHandler(w, r)
