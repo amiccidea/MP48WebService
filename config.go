@@ -60,6 +60,7 @@ type Config struct {
 	SessionInactivityMinutes int `json:"session_inactivity_minutes"`
 	// opzionale, se vuoi anche timeout assoluto:
 	SessionAbsoluteHours    int             `json:"session_absolute_hours"`
+	PasswordExpiryDays      int             `json:"password_expiry_days"` // <-- NUOVO
 	Port                    string          `json:"port"`
 	PortSSL                 string          `json:"portssl"`
 	TLSCertFile             string          `json:"tls_cert_file"`
@@ -95,7 +96,11 @@ func initConfig() {
 	if err := json.Unmarshal(data, &config); err != nil {
 		log.Fatal("Errore parsing config.json:", err)
 	}
-
+	// Inizializza le impostazioni dal config
+	settings.PasswordExpiryDays = config.PasswordExpiryDays
+	if settings.PasswordExpiryDays == 0 {
+		settings.PasswordExpiryDays = 180 // default
+	}
 	// Inizializza currentDataDir PRIMA di usarlo
 	currentDataDir = config.DataDir
 	if currentDataDir == "" {

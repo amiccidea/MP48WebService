@@ -502,6 +502,7 @@ func configCurrentFileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Elimina backup
+// Elimina backup
 func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	filename := strings.TrimPrefix(r.URL.Path, "/config-history/delete/")
 	if filename == "" {
@@ -513,12 +514,31 @@ func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filePath := filepath.Join(config.ConfigHistoryDir, filename)
+
+	// Salva il percorso assoluto per la sincronizzazione remota
+	absFilePath, err := filepath.Abs(filePath)
+	if err != nil {
+		absFilePath = filePath
+	}
+
+	// Elimina il file locale
 	if err := os.Remove(filePath); err != nil {
 		http.Error(w, "Errore eliminazione", http.StatusInternalServerError)
 		return
 	}
+
 	username, _ := getUserContext(r)
 	WriteAuditLog("CONFIG_DELETE", username, filename)
+
+	// Sincronizza l'eliminazione sulle macchine remote (in background)
+	go func() {
+		if err := SyncFileDeleteFromAllRemotes(absFilePath); err != nil {
+			log.Printf("❌ Errore sincronizzazione eliminazione backup %s: %v", filename, err)
+		} else {
+			log.Printf("✅ Eliminazione backup %s sincronizzata sulle macchine remote", filename)
+		}
+	}()
+
 	w.WriteHeader(http.StatusOK)
 }
 

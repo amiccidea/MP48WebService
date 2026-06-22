@@ -5,6 +5,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 )
 
@@ -13,10 +14,9 @@ var roles = []*Role{
 		ID:   "user",
 		Name: "Utente",
 		Permissions: map[string]bool{
-			"alarms":         true, // ex dashboard
+			"alarms":         true,
 			"logs":           true,
 			"machine_status": true,
-			// analog_inputs: false (non lo vede)
 		},
 	},
 	{
@@ -28,7 +28,7 @@ var roles = []*Role{
 			"machine_status": true,
 			"config_history": true,
 			"config_upload":  true,
-			"analog_inputs":  true, // nuovo
+			"analog_inputs":  true,
 		},
 	},
 	{
@@ -43,7 +43,7 @@ var roles = []*Role{
 			"admin_users":    true,
 			"admin_roles":    true,
 			"admin_settings": true,
-			"analog_inputs":  true, // nuovo
+			"analog_inputs":  true,
 		},
 	},
 }
@@ -57,7 +57,8 @@ func getAllPermissions() []string {
 
 func permissionLabel(p string) string {
 	labels := map[string]string{
-		"alarms": "Allarmi", "logs": "Scarica log",
+		"alarms":         "Allarmi",
+		"logs":           "Scarica log",
 		"machine_status": "Stato macchina e mirror",
 		"config_history": "Storico configurazioni",
 		"config_upload":  "Carica impostazioni",
@@ -125,6 +126,17 @@ func adminRolesCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	roles = append(roles, newRole)
 	saveRoles(currentDataDir)
+
+	// Sincronizza il file roles.enc sulle macchine remote
+	go func(roleName string) {
+		rolesPath := filepath.Join(currentDataDir, "roles.enc")
+		if err := SyncFileToAllRemotes(rolesPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione ruoli (creazione): %v", err)
+		} else {
+			log.Printf("✅ Ruoli sincronizzati dopo creazione di '%s'", roleName)
+		}
+	}(name)
+
 	http.Redirect(w, r, "/admin/roles", http.StatusFound)
 }
 
@@ -136,10 +148,23 @@ func adminRolesDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Non puoi eliminare i ruoli predefiniti", http.StatusForbidden)
 		return
 	}
+	var deletedName string
 	for i, rl := range roles {
 		if rl.ID == id {
+			deletedName = rl.Name
 			roles = append(roles[:i], roles[i+1:]...)
 			saveRoles(currentDataDir)
+
+			// Sincronizza il file roles.enc sulle macchine remote
+			go func(roleName string) {
+				rolesPath := filepath.Join(currentDataDir, "roles.enc")
+				if err := SyncFileToAllRemotes(rolesPath); err != nil {
+					log.Printf("❌ Errore sincronizzazione ruoli (eliminazione): %v", err)
+				} else {
+					log.Printf("✅ Ruoli sincronizzati dopo eliminazione di '%s'", roleName)
+				}
+			}(deletedName)
+
 			break
 		}
 	}
@@ -154,6 +179,47 @@ func adminRolesUpdate(w http.ResponseWriter, r *http.Request) {
 	id := r.FormValue("id")
 	rolesMutex.Lock()
 	defer rolesMutex.Unlock()
+
+	// Caso: creazione di un nuovo ruolo (id vuoto)
+	if id == "" {
+		name := strings.TrimSpace(r.FormValue("name"))
+		if name == "" {
+			http.Error(w, "Nome ruolo richiesto", http.StatusBadRequest)
+			return
+		}
+		newId := strings.ToLower(strings.ReplaceAll(name, " ", "_"))
+		for _, rl := range roles {
+			if rl.ID == newId {
+				http.Error(w, "Ruolo già esistente", http.StatusConflict)
+				return
+			}
+		}
+		newRole := &Role{
+			ID:          newId,
+			Name:        name,
+			Permissions: make(map[string]bool),
+		}
+		for _, p := range getAllPermissions() {
+			newRole.Permissions[p] = false
+		}
+		roles = append(roles, newRole)
+		saveRoles(currentDataDir)
+
+		// Sincronizza il file roles.enc sulle macchine remote
+		go func(roleName string) {
+			rolesPath := filepath.Join(currentDataDir, "roles.enc")
+			if err := SyncFileToAllRemotes(rolesPath); err != nil {
+				log.Printf("❌ Errore sincronizzazione ruoli (creazione da update): %v", err)
+			} else {
+				log.Printf("✅ Ruoli sincronizzati dopo creazione di '%s'", roleName)
+			}
+		}(name)
+
+		http.Redirect(w, r, "/admin/roles", http.StatusFound)
+		return
+	}
+
+	// Caso: modifica di un ruolo esistente
 	var targetRole *Role
 	for _, rl := range roles {
 		if rl.ID == id {
@@ -162,48 +228,34 @@ func adminRolesUpdate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if targetRole == nil {
-		if id == "" {
-			name := r.FormValue("name")
-			if name == "" {
-				http.Error(w, "Nome ruolo richiesto", http.StatusBadRequest)
-				return
-			}
-			newId := strings.ToLower(strings.ReplaceAll(name, " ", "_"))
-			for _, rl := range roles {
-				if rl.ID == newId {
-					http.Error(w, "Ruolo già esistente", http.StatusConflict)
-					return
-				}
-			}
-			newRole := &Role{
-				ID:          newId,
-				Name:        name,
-				Permissions: make(map[string]bool),
-			}
-			for _, p := range getAllPermissions() {
-				newRole.Permissions[p] = false
-			}
-			roles = append(roles, newRole)
-			saveRoles(currentDataDir)
-			http.Redirect(w, r, "/admin/roles", http.StatusFound)
-			return
-		}
 		http.NotFound(w, r)
 		return
 	}
-	name := r.FormValue("name")
-	if name != "" {
-		targetRole.Name = name
+
+	newName := strings.TrimSpace(r.FormValue("name"))
+	if newName != "" {
+		targetRole.Name = newName
 	}
 	for _, p := range getAllPermissions() {
-		val := r.FormValue(string(p)) == "on"
+		val := r.FormValue(p) == "on"
 		targetRole.Permissions[p] = val
 	}
 	saveRoles(currentDataDir)
+
+	// Sincronizza il file roles.enc sulle macchine remote
+	go func(roleName string) {
+		rolesPath := filepath.Join(currentDataDir, "roles.enc")
+		if err := SyncFileToAllRemotes(rolesPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione ruoli (update): %v", err)
+		} else {
+			log.Printf("✅ Ruoli sincronizzati dopo modifica di '%s'", roleName)
+		}
+	}(newName)
+
 	http.Redirect(w, r, "/admin/roles", http.StatusFound)
 }
 
-// In roles.go, cambia la definizione di Role (opzionale) e getUserPermissions
+// getUserPermissions restituisce i permessi dell'utente in base al ruolo
 func getUserPermissions(username string) map[string]bool {
 	u := getUserByUsername(username)
 	if u == nil {
@@ -212,7 +264,6 @@ func getUserPermissions(username string) map[string]bool {
 	}
 	for _, r := range roles {
 		if r.ID == string(u.Role) {
-			//log.Printf("Permessi per %s (ruolo %s): %v", username, r.ID, r.Permissions)
 			return r.Permissions
 		}
 	}
@@ -226,7 +277,7 @@ func getRoleName(roleID string) string {
 			return r.Name
 		}
 	}
-	return roleID // fallback
+	return roleID
 }
 
 // getAllRoles restituisce la lista completa dei ruoli

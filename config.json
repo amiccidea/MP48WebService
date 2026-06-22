@@ -1,49 +1,63 @@
 {
-    "session_secret": "cambia-questa-chiave-segreta-con-almeno-32-caratteri",
-    "session_inactivity_minutes": 30,
-    "session_absolute_hours": 4,
-    "session_max_age_seconds": 144400,
-    "port": "8080",
-    "portssl": "8433",
-    "tls_cert_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2.pem",
-    "tls_key_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2-key.pem",
-
-    "log_categories": [
-        {
-            "name": "RTU System",
-            "directories": ["/home/andrea/Documenti/GitDea/test/LogRtu", "/home/andrea/Documenti/GitDea/test/LogRtu/syslog"]
-        },
-        {
-            "name": "Application",
-            "directories": ["/home/andrea/Documenti/GitDea/test/LogAppMp48"]
-        }
-    ],
-    "log_extensions": [".log", ".txt", ".evt", ".trace"],
-    "config_history_dir": "/home/andrea/Documenti/GitDea/test/config_backups",
-    "config_extensions": [".rcd", ".rwb", ".txt", ".zip"],
-    "protected_users": ["admin", "root"],
-    "upload_dir": "./uploads",
-    "current_configuration_dir": "/home/andrea/Documenti/GitDea/test/ConfigMp48",
-    "data_dir": "/home/andrea/Documenti/GitDea/MP48WebService/data",
-    "audit_log_dir": "/home/andrea/Documenti/GitDea/test/LogAppMp48",
-    "cf_web_file": "/home/andrea/Documenti/GitDea/test/cfweb/cf_web.txt",
-    "points_cmd": "/usr/local/bin/rsl_smm -p",
-    "network_interfaces_file": "/home/andrea/Documenti/GitDea/test/etcnetwork/interfaces",
-    "remote_interfaces_pattern": "/home/andrea/Documenti/GitDea/test/etcnetwork/interfaces_%d",
     "analog_inputs_cmd": "/usr/local/bin/rsl_smm",
     "analog_inputs_desc_file": "/home/andrea/Documenti/GitDea/test/etcrtu/cf_%d_104_c.conf",
+    "audit_log_dir": "/home/andrea/Documenti/GitDea/test/LogAppMp48",
+    "cf_web_file": "/home/andrea/Documenti/GitDea/test/cfweb/cf_web.txt",
+    "config_extensions": [
+        ".rcd",
+        ".rwb",
+        ".txt",
+        ".zip"
+    ],
+    "config_history_dir": "/home/andrea/Documenti/GitDea/test/config_backups",
+    "current_configuration_dir": "/home/andrea/Documenti/GitDea/test/ConfigMp48",
+    "data_dir": "/home/andrea/Documenti/GitDea/MP48WebService/data",
+    "extension_files_config": [
+        ".conf",
+        ".rwb"
+    ],
     "info_version_desc_file": "/home/andrea/Documenti/GitDea/test/etccfg/",
+    "log_categories": [
+        {
+            "directories": [
+                "/home/andrea/Documenti/GitDea/test/LogRtu",
+                "/home/andrea/Documenti/GitDea/test/LogRtu/syslog"
+            ],
+            "name": "RTU System"
+        },
+        {
+            "directories": [
+                "/home/andrea/Documenti/GitDea/test/LogAppMp48"
+            ],
+            "name": "Application"
+        }
+    ],
+    "log_extensions": [
+        ".log",
+        ".txt",
+        ".evt",
+        ".trace"
+    ],
     "mp48_type": "gateway",
-    "extension_files_config": [".conf", ".rwb"],
+    "network_interfaces_file": "/home/andrea/Documenti/GitDea/test/etcnetwork/interfaces",
+    "password_expiry_days": 180,
+    "points_cmd": "/usr/local/bin/rsl_smm -p",
+    "port": "8080",
+    "portssl": "8433",
+    "protected_users": [
+        "admin",
+        "root"
+    ],
+    "remote_interfaces_pattern": "/home/andrea/Documenti/GitDea/test/etcnetwork/interfaces_%d",
     "remote_machines": [
         {
+            "ftp": {
+                "passive": true,
+                "port": 21,
+                "remote_dir": "/"
+            },
             "id": "cpu2",
             "name": "CPU secondaria",
-			"ftp": {
-				"port": 21,
-				"remote_dir": "/",
-				"passive": true
-			},
             "telnet": {
                 "host": "192.168.237.128",
                 "port": 23,
@@ -51,5 +65,12 @@
                 "timeout_seconds": 10
             }
         }
-    ]                                                                                     
+    ],
+    "session_absolute_hours": 4,
+    "session_inactivity_minutes": 30,
+    "session_max_age_seconds": 144400,
+    "session_secret": "cambia-questa-chiave-segreta-con-almeno-32-caratteri",
+    "tls_cert_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2.pem",
+    "tls_key_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2-key.pem",
+    "upload_dir": "./uploads"
 }
