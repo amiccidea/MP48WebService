@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -25,7 +26,7 @@ func adminUsersPage(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate string
 		Users           []*User
 		Permissions     map[string]bool
-		Roles           []*Role // aggiungi questa riga
+		Roles           []*Role
 	}{
 		Username:        username,
 		IsAdmin:         true,
@@ -33,7 +34,7 @@ func adminUsersPage(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate: "adminUsersContent",
 		Users:           userList,
 		Permissions:     perms,
-		Roles:           roles, // passa la slice dei ruoli
+		Roles:           roles,
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }
@@ -70,6 +71,17 @@ func adminUserCreate(w http.ResponseWriter, r *http.Request) {
 		LastModified:      now,
 	}
 	saveUsers(currentDataDir)
+
+	// 🔄 Sincronizza il file users.enc sulle macchine remote
+	go func(userName string) {
+		usersPath := filepath.Join(currentDataDir, "users.enc")
+		if err := SyncFileToAllRemotes(usersPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione utenti (creazione): %v", err)
+		} else {
+			log.Printf("✅ Utenti sincronizzati dopo creazione di '%s'", userName)
+		}
+	}(username)
+
 	http.Redirect(w, r, "/admin/users", http.StatusFound)
 }
 
@@ -88,6 +100,17 @@ func adminUserDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	delete(users, username)
 	saveUsers(currentDataDir)
+
+	// 🔄 Sincronizza il file users.enc sulle macchine remote
+	go func(userName string) {
+		usersPath := filepath.Join(currentDataDir, "users.enc")
+		if err := SyncFileToAllRemotes(usersPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione utenti (eliminazione): %v", err)
+		} else {
+			log.Printf("✅ Utenti sincronizzati dopo eliminazione di '%s'", userName)
+		}
+	}(username)
+
 	http.Redirect(w, r, "/admin/users", http.StatusFound)
 }
 
@@ -110,7 +133,7 @@ func adminUserEditForm(w http.ResponseWriter, r *http.Request) {
 	}
 	usernameCtx, _ := getUserContext(r)
 	perms := getUserPermissions(usernameCtx)
-	rolesList := getAllRoles() // <-- aggiunto
+	rolesList := getAllRoles()
 
 	data := struct {
 		Username        string
@@ -120,7 +143,7 @@ func adminUserEditForm(w http.ResponseWriter, r *http.Request) {
 		User            *User
 		IsProtected     bool
 		Permissions     map[string]bool
-		RolesList       []*Role // <-- aggiunto
+		RolesList       []*Role
 	}{
 		Username:        usernameCtx,
 		IsAdmin:         true,
@@ -164,6 +187,17 @@ func adminUserEditPost(w http.ResponseWriter, r *http.Request) {
 		}
 		delete(users, username)
 		saveUsers(currentDataDir)
+
+		// 🔄 Sincronizza il file users.enc sulle macchine remote
+		go func(userName string) {
+			usersPath := filepath.Join(currentDataDir, "users.enc")
+			if err := SyncFileToAllRemotes(usersPath); err != nil {
+				log.Printf("❌ Errore sincronizzazione utenti (eliminazione da edit): %v", err)
+			} else {
+				log.Printf("✅ Utenti sincronizzati dopo eliminazione di '%s'", userName)
+			}
+		}(username)
+
 		http.Redirect(w, r, "/admin/users", http.StatusFound)
 		return
 	}
@@ -185,12 +219,35 @@ func adminUserEditPost(w http.ResponseWriter, r *http.Request) {
 		u.PasswordChangedAt = time.Now()
 		u.LastModified = time.Now()
 		saveUsers(currentDataDir)
+
+		// 🔄 Sincronizza il file users.enc sulle macchine remote (reset password)
+		go func(userName string) {
+			usersPath := filepath.Join(currentDataDir, "users.enc")
+			if err := SyncFileToAllRemotes(usersPath); err != nil {
+				log.Printf("❌ Errore sincronizzazione utenti (reset password): %v", err)
+			} else {
+				log.Printf("✅ Utenti sincronizzati dopo reset password di '%s'", userName)
+			}
+		}(username)
+
 		http.Redirect(w, r, "/admin/users", http.StatusFound)
 		return
 	}
 	saveUsers(currentDataDir)
+
+	// 🔄 Sincronizza il file users.enc sulle macchine remote (modifica)
+	go func(userName string) {
+		usersPath := filepath.Join(currentDataDir, "users.enc")
+		if err := SyncFileToAllRemotes(usersPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione utenti (modifica): %v", err)
+		} else {
+			log.Printf("✅ Utenti sincronizzati dopo modifica di '%s'", userName)
+		}
+	}(username)
+
 	http.Redirect(w, r, "/admin/users", http.StatusFound)
 }
+
 func adminUserUnlock(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -208,7 +265,19 @@ func adminUserUnlock(w http.ResponseWriter, r *http.Request) {
 	u.FailedLoginAttempts = 0
 	u.LockedUntil = time.Time{}
 	saveUsers(currentDataDir)
+
 	log.Printf("Admin ha sbloccato l'account %s", username)
 	WriteAuditLog("user_unlock", username, "Account sbloccato da admin")
+
+	// 🔄 Sincronizza il file users.enc sulle macchine remote (sblocco)
+	go func(userName string) {
+		usersPath := filepath.Join(currentDataDir, "users.enc")
+		if err := SyncFileToAllRemotes(usersPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione utenti (sblocco): %v", err)
+		} else {
+			log.Printf("✅ Utenti sincronizzati dopo sblocco di '%s'", userName)
+		}
+	}(username)
+
 	w.WriteHeader(http.StatusOK)
 }

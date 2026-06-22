@@ -434,6 +434,16 @@ func changePasswordPost(w http.ResponseWriter, r *http.Request) {
 	userMutex.Unlock()
 	saveUsers(currentDataDir)
 
+	// 🔄 Sincronizza il file users.enc sulle macchine remote (cambio password forzato)
+	go func(userName string) {
+		usersPath := filepath.Join(currentDataDir, "users.enc")
+		if err := SyncFileToAllRemotes(usersPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione utenti (cambio password forzato per %s): %v", userName, err)
+		} else {
+			log.Printf("✅ Utenti sincronizzati dopo cambio password forzato di '%s'", userName)
+		}
+	}(username)
+
 	delete(session.Values, "pending_user")
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
@@ -522,6 +532,16 @@ func profileChangePasswordPost(w http.ResponseWriter, r *http.Request) {
 	u.PasswordChangedAt = time.Now()
 	u.LastModified = time.Now()
 	saveUsers(currentDataDir)
+
+	// 🔄 Sincronizza il file users.enc sulle macchine remote (cambio password volontario)
+	go func(userName string) {
+		usersPath := filepath.Join(currentDataDir, "users.enc")
+		if err := SyncFileToAllRemotes(usersPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione utenti (cambio password volontario per %s): %v", userName, err)
+		} else {
+			log.Printf("✅ Utenti sincronizzati dopo cambio password volontario di '%s'", userName)
+		}
+	}(username)
 
 	session, _ := store.Get(r, "portal-session")
 	session.Values["authenticated"] = true
