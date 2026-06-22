@@ -120,6 +120,10 @@ func main() {
 		http.Redirect(w, r, "/alarms", http.StatusFound)
 	})
 
+	//sincronizzo i log ogni minuto
+	http.HandleFunc("/api/sync-audit-log", authMiddleware(adminMiddleware(SyncAuditLogNowHandler)))
+	StartAuditLogSyncTicker(1)
+
 	// Avvia server HTTP sulla porta config.Port
 	go func() {
 		log.Printf("Server HTTP avviato su http://localhost:%s", config.Port)

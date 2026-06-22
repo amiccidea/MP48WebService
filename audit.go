@@ -38,4 +38,15 @@ func WriteAuditLog(action, username, details string) {
 	if _, err := f.WriteString(line); err != nil {
 		log.Printf("Errore scrittura audit log: %v", err)
 	}
+
+	// 🔄 Sincronizzazione immediata dell'audit log sulle macchine remote (in background)
+	go func() {
+		// Attendiamo un breve momento per assicurarci che il file sia stato scritto
+		time.Sleep(500 * time.Millisecond)
+		if err := SyncFileToAllRemotes(filePath); err != nil {
+			log.Printf("❌ Errore sincronizzazione audit log (scrittura): %v", err)
+		} else {
+			log.Printf("✅ Audit log sincronizzato dopo scrittura di '%s' da %s", action, username)
+		}
+	}()
 }

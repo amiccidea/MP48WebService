@@ -10,7 +10,14 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+)
+
+// Variabili per la sincronizzazione dell'audit log
+var (
+	auditLogSyncMutex sync.Mutex
+	auditLogLastSync  = make(map[string]time.Time) // path -> ultima modifica sincronizzata
 )
 
 func logsPageHandler(w http.ResponseWriter, r *http.Request) {
@@ -152,7 +159,7 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	paginatedLogs := allLogs[start:end]
 	log.Printf("Trovati %d log, pagina %d/%d (size=%d)", total, page, totalPages, pageSize)
-	_, isAdmin := getUserContext(r) // username ignorato
+	_, isAdmin := getUserContext(r)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"logs":       paginatedLogs,
@@ -165,60 +172,6 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// logsDeleteHandler elimina un file di log (solo admin)
-func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	username, isAdmin := getUserContext(r)
-	log.Printf("logsDeleteHandler: username=%s, isAdmin=%v", username, isAdmin)
-
-	if !isAdmin {
-		http.Error(w, "Accesso negato", http.StatusForbidden)
-		return
-	}
-
-	filePath := r.FormValue("path")
-	if filePath == "" {
-		http.Error(w, "Percorso mancante", http.StatusBadRequest)
-		return
-	}
-	log.Printf("Percorso ricevuto: %q", filePath)
-
-	// Pulizia percorso
-	cleanPath := filepath.Clean(filePath)
-	log.Printf("Percorso pulito: %q", cleanPath)
-
-	// Verifica che il file sia in una directory consentita
-	allowed := false
-	for _, cat := range config.LogCategories {
-		for _, dir := range cat.Directories {
-			cleanDir := filepath.Clean(dir)
-			// Confronta i percorsi in modo case-insensitive? No, ma su Windows è case-insensitive.
-			if strings.HasPrefix(strings.ToLower(cleanPath), strings.ToLower(cleanDir)) {
-				allowed = true
-				break
-			}
-		}
-	}
-	if !allowed {
-		log.Printf("Accesso negato: percorso %q non consentito", cleanPath)
-		http.Error(w, "Accesso negato", http.StatusForbidden)
-		return
-	}
-
-	// Elimina il file
-	if err := os.Remove(cleanPath); err != nil {
-		log.Printf("Errore eliminazione file %s: %v", cleanPath, err)
-		http.Error(w, "Errore eliminazione file", http.StatusInternalServerError)
-		return
-	}
-
-	WriteAuditLog("LOG_DELETE", username, fmt.Sprintf("eliminato file log %s", cleanPath))
-	w.WriteHeader(http.StatusOK)
-}
 func getCategoriesList() []string {
 	cats := []string{"all"}
 	for _, cat := range config.LogCategories {
@@ -249,4 +202,150 @@ func logsDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(filepath.Base(filePath)))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	http.ServeFile(w, r, filePath)
+}
+
+// logsDeleteHandler elimina un file di log (solo admin) - con sincronizzazione eliminazione
+func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	username, isAdmin := getUserContext(r)
+	log.Printf("logsDeleteHandler: username=%s, isAdmin=%v", username, isAdmin)
+
+	if !isAdmin {
+		http.Error(w, "Accesso negato", http.StatusForbidden)
+		return
+	}
+
+	filePath := r.FormValue("path")
+	if filePath == "" {
+		http.Error(w, "Percorso mancante", http.StatusBadRequest)
+		return
+	}
+	log.Printf("Percorso ricevuto: %q", filePath)
+
+	cleanPath := filepath.Clean(filePath)
+	log.Printf("Percorso pulito: %q", cleanPath)
+
+	// Verifica che il file sia in una directory consentita
+	allowed := false
+	for _, cat := range config.LogCategories {
+		for _, dir := range cat.Directories {
+			cleanDir := filepath.Clean(dir)
+			if strings.HasPrefix(strings.ToLower(cleanPath), strings.ToLower(cleanDir)) {
+				allowed = true
+				break
+			}
+		}
+	}
+	if !allowed {
+		log.Printf("Accesso negato: percorso %q non consentito", cleanPath)
+		http.Error(w, "Accesso negato", http.StatusForbidden)
+		return
+	}
+
+	// Elimina il file locale
+	if err := os.Remove(cleanPath); err != nil {
+		log.Printf("Errore eliminazione file %s: %v", cleanPath, err)
+		http.Error(w, "Errore eliminazione file", http.StatusInternalServerError)
+		return
+	}
+
+	WriteAuditLog("LOG_DELETE", username, fmt.Sprintf("eliminato file log %s", cleanPath))
+
+	// 🔄 Sincronizza l'eliminazione del log sulle macchine remote (in background)
+	go func(path string) {
+		if err := SyncFileDeleteFromAllRemotes(path); err != nil {
+			log.Printf("❌ Errore sincronizzazione eliminazione log %s: %v", path, err)
+		} else {
+			log.Printf("✅ Eliminazione log %s sincronizzata sulle macchine remote", path)
+		}
+	}(cleanPath)
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// ==================== SINCRONIZZAZIONE AUDIT LOG ====================
+
+// StartAuditLogSyncTicker avvia un ticker periodico per sincronizzare l'audit log
+func StartAuditLogSyncTicker(intervalMinutes int) {
+	if intervalMinutes <= 0 {
+		intervalMinutes = 5 // default: 5 minuti
+	}
+	ticker := time.NewTicker(time.Duration(intervalMinutes) * time.Minute)
+	go func() {
+		log.Printf("🔄 Avviata sincronizzazione periodica dell'audit log (ogni %d minuti)", intervalMinutes)
+		for range ticker.C {
+			syncAuditLog()
+		}
+	}()
+}
+
+// syncAuditLog sincronizza il file di audit log corrente
+func syncAuditLog() {
+	if config.AuditLogDir == "" {
+		log.Printf("⚠️ AuditLogDir non configurato, salto sincronizzazione")
+		return
+	}
+
+	// Costruisci il nome del file di audit corrente
+	filename := fmt.Sprintf("LogMP48Ws_%s.log", time.Now().Format("20060102"))
+	auditPath := filepath.Join(config.AuditLogDir, filename)
+
+	// Verifica se il file esiste
+	info, err := os.Stat(auditPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Printf("ℹ️ Audit log %s non esiste ancora, salto sincronizzazione", filename)
+		} else {
+			log.Printf("❌ Errore verifica audit log %s: %v", auditPath, err)
+		}
+		return
+	}
+
+	fileModTime := info.ModTime()
+
+	// Controlla se il file è stato modificato dopo l'ultima sincronizzazione
+	auditLogSyncMutex.Lock()
+	lastSync, ok := auditLogLastSync[auditPath]
+	if ok && !fileModTime.After(lastSync) {
+		auditLogSyncMutex.Unlock()
+		log.Printf("ℹ️ Audit log %s già sincronizzato (modifica: %s)", filename, fileModTime.Format("15:04:05"))
+		return
+	}
+	auditLogSyncMutex.Unlock()
+
+	// Sincronizza il file
+	log.Printf("📤 Sincronizzazione audit log: %s (modificato %s)", filename, fileModTime.Format("15:04:05"))
+	if err := SyncFileToAllRemotes(auditPath); err != nil {
+		log.Printf("❌ Errore sincronizzazione audit log %s: %v", filename, err)
+		return
+	}
+
+	// Aggiorna il timestamp di sincronizzazione
+	auditLogSyncMutex.Lock()
+	auditLogLastSync[auditPath] = fileModTime
+	auditLogSyncMutex.Unlock()
+	log.Printf("✅ Audit log sincronizzato: %s", filename)
+}
+
+// SyncAuditLogNowHandler sincronizza l'audit log su richiesta (endpoint manuale per admin)
+func SyncAuditLogNowHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	_, isAdmin := getUserContext(r)
+	if !isAdmin {
+		http.Error(w, "Accesso negato", http.StatusForbidden)
+		return
+	}
+
+	// Esegue la sincronizzazione in background
+	go syncAuditLog()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Sincronizzazione audit log avviata in background"))
 }
