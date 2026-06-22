@@ -94,13 +94,23 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 5. Backup dell'attuale directory corrente
-		_, backupName, err := backupCurrentConfigDir()
+		backupPath, backupName, err := backupCurrentConfigDir()
 		if err != nil {
 			log.Printf("Errore backup: %v", err)
 			renderPage("Errore durante il backup della configurazione corrente: "+err.Error(), true)
 			return
 		}
 		log.Printf("Backup automatico creato: %s", backupName)
+
+		// 🔄 Sincronizza il backup sulle macchine remote
+		go func() {
+			// Sincronizza il singolo file di backup
+			if err := SyncFileToAllRemotes(backupPath); err != nil {
+				log.Printf("Errore sincronizzazione backup %s: %v", backupName, err)
+			} else {
+				log.Printf("✅ Backup %s sincronizzato sulle macchine remote", backupName)
+			}
+		}()
 
 		// 6. Estrai l'archivio nella directory corrente
 		if err := extractArchive(tempPath, config.CurrentConfigurationDir); err != nil {
@@ -109,6 +119,14 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// 7. Sincronizza i file estratti sulle macchine remote
+		go func() {
+			if err := SyncDirToAllRemotes(config.CurrentConfigurationDir); err != nil {
+				log.Printf("Errore sincronizzazione configurazione: %v", err)
+			} else {
+				log.Printf("✅ Configurazione sincronizzata sulle macchine remote")
+			}
+		}()
 		// 7. Log dell'operazione
 		WriteAuditLog("CONFIG_UPLOAD", username, fmt.Sprintf("caricato archivio %s (backup automatico: %s)", handler.Filename, backupName))
 

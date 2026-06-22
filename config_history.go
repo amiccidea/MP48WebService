@@ -547,20 +547,43 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Directory corrente non configurata", http.StatusInternalServerError)
 		return
 	}
-	_, backupZipName, err := backupCurrentConfigDir()
+
+	// 1. Backup automatico PRIMA del restore
+	backupAutoPath, backupAutoName, err := backupCurrentConfigDir()
 	if err != nil {
 		log.Printf("Errore backup: %v", err)
 		http.Error(w, "Errore durante il backup della configurazione corrente", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Backup automatico creato: %s", backupZipName)
+	log.Printf("Backup automatico creato: %s", backupAutoName)
+
+	// 2. Estrai il backup scelto nella directory corrente
 	if err := extractArchive(backupPath, config.CurrentConfigurationDir); err != nil {
 		log.Printf("Errore estrazione: %v", err)
 		http.Error(w, "Errore durante il ripristino", http.StatusInternalServerError)
 		return
 	}
 	username, _ := getUserContext(r)
-	WriteAuditLog("CONFIG_RESTORE", username, fmt.Sprintf("ripristinato backup %s (backup automatico: %s)", filename, backupZipName))
+	WriteAuditLog("CONFIG_RESTORE", username, fmt.Sprintf("ripristinato backup %s (backup automatico: %s)", filename, backupAutoName))
+
+	// 3. Sincronizza il backup automatico (file ZIP) sulle macchine remote
+	go func() {
+		if err := SyncFileToAllRemotes(backupAutoPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione backup automatico %s: %v", backupAutoName, err)
+		} else {
+			log.Printf("✅ Backup automatico %s sincronizzato sulle macchine remote", backupAutoName)
+		}
+	}()
+
+	// 4. Sincronizza la configurazione ripristinata sulle macchine remote
+	go func() {
+		if err := SyncDirToAllRemotes(config.CurrentConfigurationDir); err != nil {
+			log.Printf("❌ Errore sincronizzazione configurazione ripristinata: %v", err)
+		} else {
+			log.Printf("✅ Configurazione ripristinata sincronizzata sulle macchine remote")
+		}
+	}()
+
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("OK"))
 }
