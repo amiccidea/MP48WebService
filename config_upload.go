@@ -25,6 +25,7 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Message         string
 			Permissions     map[string]bool
 			IsError         bool
+			IsMultiCPU      bool
 		}{
 			Username:        username,
 			IsAdmin:         isAdmin,
@@ -33,6 +34,7 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Message:         message,
 			Permissions:     getUserPermissions(username),
 			IsError:         isError,
+			IsMultiCPU:      isMultiCPU(),
 		}
 		tmpl.ExecuteTemplate(w, "layout.html", data)
 	}

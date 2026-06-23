@@ -29,12 +29,14 @@ func logsPageHandler(w http.ResponseWriter, r *http.Request) {
 		Title           string
 		ContentTemplate string
 		Permissions     map[string]bool
+		IsMultiCPU      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
 		Title:           "Logs",
 		ContentTemplate: "logsContent",
 		Permissions:     perms,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

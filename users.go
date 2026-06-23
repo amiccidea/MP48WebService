@@ -27,6 +27,7 @@ func adminUsersPage(w http.ResponseWriter, r *http.Request) {
 		Users           []*User
 		Permissions     map[string]bool
 		Roles           []*Role
+		IsMultiCPU      bool
 	}{
 		Username:        username,
 		IsAdmin:         true,
@@ -35,6 +36,7 @@ func adminUsersPage(w http.ResponseWriter, r *http.Request) {
 		Users:           userList,
 		Permissions:     perms,
 		Roles:           roles,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

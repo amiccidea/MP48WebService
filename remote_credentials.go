@@ -39,6 +39,7 @@ func remoteCredentialsPageHandler(w http.ResponseWriter, r *http.Request) {
 		RemoteMachines  []RemoteMachine
 		Credentials     map[string]RemoteCredential
 		HasCredentials  bool
+		IsMultiCPU      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -48,6 +49,7 @@ func remoteCredentialsPageHandler(w http.ResponseWriter, r *http.Request) {
 		RemoteMachines:  config.RemoteMachines,
 		Credentials:     creds.Machines,
 		HasCredentials:  len(creds.Machines) > 0,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

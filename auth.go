@@ -134,12 +134,15 @@ func initDefaultUsers() {
 func getLayoutData(r *http.Request, title, contentTemplate string) map[string]interface{} {
 	username, isAdmin := getUserContext(r)
 	perms := getUserPermissions(username)
+	multiCPU := isMultiCPU()
+	log.Printf("DEBUG: Username=%s, IsAdmin=%v, IsMultiCPU=%v", username, isAdmin, multiCPU)
 	return map[string]interface{}{
 		"Username":        username,
 		"IsAdmin":         isAdmin,
 		"Title":           title,
 		"ContentTemplate": contentTemplate,
 		"Permissions":     perms,
+		"IsMultiCPU":      multiCPU,
 	}
 }
 

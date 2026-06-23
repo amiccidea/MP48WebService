@@ -49,20 +49,22 @@
             <li class="nav-item sub-nav"><a href="/admin/settings" class="nav-link"><span class="icon">⚙️</span> Impostazioni sistema</a></li>
             {{end}}
             {{end}}
-        {{if .IsAdmin}}    
-            <button onclick="fetch('/api/sync-remotes', {method:'POST'}).then(()=>alert('Sincronizzazione avviata'))">
-    📡 Sincronizza con tutte le CPU
-</button>
-{{end}}
-{{if .IsAdmin}}
-<li class="nav-item">
-    <a href="/admin/remote-credentials" class="nav-link"><span class="icon">🔐</span> Credenziali remote</a>
-</li>
-{{end}}
+
             {{if .IsAdmin}}
-            <li class="nav-item">
-                <a href="/reboot" class="nav-link"><span class="icon">🔄</span> Reboot sistema</a>
-            </li>
+                {{if .IsMultiCPU}}
+                <li class="nav-item">
+                    <a href="/sync" class="nav-link">
+                        <span class="icon">📡</span> Sincronizza con tutte le CPU
+                    </a>
+                </li>
+                
+                <li class="nav-item">
+                    <a href="/admin/remote-credentials" class="nav-link"><span class="icon">🔐</span> Credenziali remote</a>
+                </li>
+                {{end}}
+                <li class="nav-item">
+                    <a href="/reboot" class="nav-link"><span class="icon">🔄</span> Reboot sistema</a>
+                </li>
             {{end}}
         </ul>
         <div class="sidebar-footer">
@@ -93,6 +95,8 @@
             {{template "adminRolesContent" .}}
         {{else if eq .ContentTemplate "adminUserEditContent"}}
             {{template "adminUserEditContent" .}}
+        {{else if eq .ContentTemplate "syncContent"}}
+            {{template "syncContent" .}}            
         {{else if eq .ContentTemplate "remoteCredentialsContent"}}
             {{template "remoteCredentialsContent" .}}                
         {{else if eq .ContentTemplate "rebootContent"}}
@@ -102,13 +106,14 @@
         {{end}}
     </div>
 
+    <div id="syncStatus" style="display:none; padding:10px; margin:10px; border-radius:4px; background:#f0f0f0;"></div>
+
     <script>
         (function() {
             const toggle = document.getElementById('menuToggle');
             const sidebar = document.getElementById('sidebar');
             if (!toggle || !sidebar) return;
 
-            // Gestione toggle menu solo su mobile
             function update() {
                 const isMobile = window.innerWidth <= 768;
                 if (!isMobile) {
@@ -126,24 +131,6 @@
 
             window.addEventListener('resize', update);
         })();
-
-        const rebootLink = document.getElementById('rebootLink');
-        if (rebootLink) {
-            rebootLink.addEventListener('click', function(e) {
-                e.preventDefault();
-                if (confirm('⚠️ ATTENZIONE: il riavvio del sistema potrebbe interrompere il funzionamento dell\'RTU per alcuni minuti. Sei sicuro?')) {
-                    fetch('/api/reboot', { method: 'POST' })
-                        .then(res => {
-                            if (res.ok) {
-                                alert('Reboot avviato. La pagina potrebbe non rispondere momentaneamente.');
-                            } else {
-                                alert('Errore durante il reboot: ' + res.status);
-                            }
-                        })
-                        .catch(err => alert('Errore di rete: ' + err));
-                }
-            });
-        }
     </script>
 </body>
 </html>

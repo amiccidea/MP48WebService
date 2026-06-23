@@ -18,6 +18,7 @@ func alarmsHandler(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Errore recupero segnali: %v", err)
 		signals = &SignalsData{}
 	}
+
 	data := struct {
 		Username        string
 		IsAdmin         bool
@@ -25,6 +26,7 @@ func alarmsHandler(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate string
 		Permissions     map[string]bool
 		Signals         *SignalsData
+		IsMultiCPU      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -32,6 +34,7 @@ func alarmsHandler(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate: "alarmsContent", // o "alarmsContent" se rinominato
 		Permissions:     perms,
 		Signals:         signals,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

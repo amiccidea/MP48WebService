@@ -86,6 +86,7 @@ func adminRolesPage(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate string
 		RolesJSON       template.JS
 		Permissions     map[string]bool
+		IsMultiCPU      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -93,6 +94,7 @@ func adminRolesPage(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate: "adminRolesContent",
 		RolesJSON:       template.JS(rolesToJSON()),
 		Permissions:     perms,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

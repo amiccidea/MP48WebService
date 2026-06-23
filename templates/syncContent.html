@@ -1,0 +1,168 @@
+{{define "syncContent"}}
+<h1>📡 Sincronizzazione con tutte le CPU</h1>
+
+<div class="card-modern">
+    <div class="card-header">
+        <span>Stato sincronizzazione</span>
+        <span id="syncStatusBadge" style="padding:4px 12px; border-radius:12px; background:#6c757d; color:#fff; font-size:0.8rem;">Inattivo</span>
+    </div>
+    <div class="card-body">
+        <div style="margin-bottom: 1rem; display: flex; gap: 1rem; flex-wrap: wrap;">
+            <button id="syncStartBtn" class="button" style="background: #28a745; color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer;">
+                ▶️ Avvia sincronizzazione
+            </button>
+            <button id="syncClearBtn" class="button" style="background: #6c757d; color: white; border: none; padding: 10px 24px; border-radius: 6px; cursor: pointer;">
+                🗑️ Pulisci log
+            </button>
+            <span id="syncSpinner" style="display:none; margin-left: 10px;">⏳ Sincronizzazione in corso...</span>
+        </div>
+        
+        <div style="background: #1e1e2e; color: #cdd6f4; border-radius: 8px; padding: 1rem; font-family: 'Courier New', monospace; font-size: 0.85rem; max-height: 550px; overflow-y: auto; min-height: 200px;" id="syncLogContainer">
+            <div class="log-entry info">ℹ️ In attesa di avviare la sincronizzazione...</div>
+        </div>
+        
+        <div style="margin-top: 1rem; font-size: 0.8rem; color: #6c757d;">
+            <span>📁 I log vengono salvati su: <strong>{{.SyncLogPath}}</strong></span>
+        </div>
+    </div>
+</div>
+
+<style>
+    .log-entry { padding: 2px 0; border-bottom: 1px solid rgba(255,255,255,0.05); white-space: pre-wrap; word-break: break-all; }
+    .log-entry.info { color: #89b4fa; }
+    .log-entry.success { color: #a6e3a1; }
+    .log-entry.error { color: #f38ba8; }
+    .log-entry.warning { color: #f9e2af; }
+</style>
+
+<script>
+    let syncEventSource = null;
+    let syncRunning = false;
+
+    function appendLog(entry) {
+        const container = document.getElementById('syncLogContainer');
+        const div = document.createElement('div');
+        div.className = 'log-entry ' + entry.type;
+        div.textContent = '[' + entry.time + '] ' + entry.message;
+        container.appendChild(div);
+        container.scrollTop = container.scrollHeight;
+    }
+
+    function startSync() {
+        if (syncRunning) {
+            alert('⚠️ Sincronizzazione già in corso!');
+            return;
+        }
+
+        const confirmMsg = '⚠️ ATTENZIONE: La sincronizzazione manuale copierà TUTTI i file (configurazioni, backup, utenti, ruoli, credenziali, log) su TUTTE le CPU remote.\n\nL\'operazione potrebbe richiedere alcuni minuti.\nProseguire?';
+        if (!confirm(confirmMsg)) {
+            return;
+        }
+
+        // Pulisci i log vecchi
+        const container = document.getElementById('syncLogContainer');
+        container.innerHTML = '<div class="log-entry info">⏳ Connessione al server...</div>';
+
+        // Aggiorna stato
+        syncRunning = true;
+        document.getElementById('syncStatusBadge').textContent = '🔄 In corso...';
+        document.getElementById('syncStatusBadge').style.background = '#ffc107';
+        document.getElementById('syncStatusBadge').style.color = '#000';
+        document.getElementById('syncSpinner').style.display = 'inline';
+        document.getElementById('syncStartBtn').disabled = true;
+        document.getElementById('syncStartBtn').style.opacity = '0.6';
+
+        // Chiudi eventuale connessione precedente
+        if (syncEventSource) {
+            syncEventSource.close();
+            syncEventSource = null;
+        }
+
+        // Avvia la sincronizzazione
+        fetch('/api/sync-remotes', { method: 'POST' })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Errore HTTP: ' + response.status);
+                }
+                // Apri connessione SSE
+                syncEventSource = new EventSource('/api/sync-events');
+                syncEventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        appendLog(data);
+                        
+                        // Se riceviamo "done", la sincronizzazione è terminata
+                        if (data.type === 'done') {
+                            syncRunning = false;
+                            document.getElementById('syncStatusBadge').textContent = '✅ Completato';
+                            document.getElementById('syncStatusBadge').style.background = '#28a745';
+                            document.getElementById('syncStatusBadge').style.color = '#fff';
+                            document.getElementById('syncSpinner').style.display = 'none';
+                            document.getElementById('syncStartBtn').disabled = false;
+                            document.getElementById('syncStartBtn').style.opacity = '1';
+                            syncEventSource.close();
+                            syncEventSource = null;
+                        }
+                        
+                        // Se è un messaggio di successo finale, aggiorna stato
+                        if (data.type === 'success' && data.message.includes('completata')) {
+                            // Non facciamo nulla qui, il messaggio "done" chiuderà
+                        }
+                    } catch (e) {
+                        console.error('Errore parsing SSE:', e);
+                    }
+                };
+                syncEventSource.onerror = function(e) {
+                    // Se la connessione è chiusa dal server e syncRunning è true, 
+                    // potremmo aver perso il messaggio "done" per qualche motivo
+                    if (syncEventSource.readyState === EventSource.CLOSED) {
+                        if (syncRunning) {
+                            // Se è ancora in running, forse la connessione è caduta ma la sincronizzazione è finita
+                            // Aggiungiamo un messaggio di completamento forzato
+                            appendLog({ type: 'success', time: new Date().toLocaleTimeString(), message: '✅ Sincronizzazione completata (connessione chiusa)' });
+                            syncRunning = false;
+                            document.getElementById('syncStatusBadge').textContent = '✅ Completato';
+                            document.getElementById('syncStatusBadge').style.background = '#28a745';
+                            document.getElementById('syncStatusBadge').style.color = '#fff';
+                            document.getElementById('syncSpinner').style.display = 'none';
+                            document.getElementById('syncStartBtn').disabled = false;
+                            document.getElementById('syncStartBtn').style.opacity = '1';
+                        }
+                    } else {
+                        appendLog({ type: 'error', time: new Date().toLocaleTimeString(), message: '❌ Errore di connessione al server.' });
+                        syncRunning = false;
+                        document.getElementById('syncStatusBadge').textContent = '❌ Errore';
+                        document.getElementById('syncStatusBadge').style.background = '#dc3545';
+                        document.getElementById('syncStatusBadge').style.color = '#fff';
+                        document.getElementById('syncSpinner').style.display = 'none';
+                        document.getElementById('syncStartBtn').disabled = false;
+                        document.getElementById('syncStartBtn').style.opacity = '1';
+                    }
+                    syncEventSource.close();
+                    syncEventSource = null;
+                };
+            })
+            .catch(error => {
+                appendLog({ type: 'error', time: new Date().toLocaleTimeString(), message: '❌ Errore avvio sincronizzazione: ' + error.message });
+                syncRunning = false;
+                document.getElementById('syncStatusBadge').textContent = '❌ Errore';
+                document.getElementById('syncStatusBadge').style.background = '#dc3545';
+                document.getElementById('syncStatusBadge').style.color = '#fff';
+                document.getElementById('syncSpinner').style.display = 'none';
+                document.getElementById('syncStartBtn').disabled = false;
+                document.getElementById('syncStartBtn').style.opacity = '1';
+            });
+    }
+
+    function clearLogs() {
+        const container = document.getElementById('syncLogContainer');
+        container.innerHTML = '<div class="log-entry info">🧹 Log puliti.</div>';
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('syncStartBtn').addEventListener('click', startSync);
+        document.getElementById('syncClearBtn').addEventListener('click', clearLogs);
+    });
+</script>
+{{end}}

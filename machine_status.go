@@ -172,7 +172,8 @@ func machineStatusHandler(w http.ResponseWriter, r *http.Request) {
 		Status          string
 		Permissions     map[string]bool
 		Interfaces      []InterfaceInfo
-		MachineInfo     *MachineInfo // <-- aggiunto
+		MachineInfo     *MachineInfo
+		IsMultiCPU      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -181,7 +182,8 @@ func machineStatusHandler(w http.ResponseWriter, r *http.Request) {
 		Status:          "Informazioni sulla macchina e stato delle interfacce di rete",
 		Permissions:     perms,
 		Interfaces:      interfaces,
-		MachineInfo:     machineInfo, // <-- aggiunto
+		MachineInfo:     machineInfo,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

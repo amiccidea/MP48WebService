@@ -442,6 +442,7 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		StartDate       string
 		EndDate         string
 		Permissions     map[string]bool
+		IsMultiCPU      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -452,6 +453,7 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		StartDate:       startDate,
 		EndDate:         endDate,
 		Permissions:     perms,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

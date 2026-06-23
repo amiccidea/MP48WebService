@@ -19,6 +19,7 @@ func adminSettingsPage(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate string
 		PasswordExpiry  int
 		Permissions     map[string]bool
+		IsMultiCPU      bool
 	}{
 		Username:        username,
 		IsAdmin:         true,
@@ -26,6 +27,7 @@ func adminSettingsPage(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate: "adminSettingsContent",
 		PasswordExpiry:  settings.PasswordExpiryDays,
 		Permissions:     perms,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

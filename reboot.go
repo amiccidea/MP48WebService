@@ -251,6 +251,7 @@ func rebootPageHandler(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate string
 		Permissions     map[string]bool
 		RemoteMachines  []RemoteMachine
+		IsMultiCPU      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -258,6 +259,7 @@ func rebootPageHandler(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate: "rebootContent",
 		Permissions:     perms,
 		RemoteMachines:  config.RemoteMachines,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

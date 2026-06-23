@@ -6,6 +6,17 @@ import (
 	"net/http"
 )
 
+// isMultiCPU restituisce true se ci sono macchine remote configurate (esclusa "local")
+func isMultiCPU() bool {
+	remoteCount := 0
+	for _, m := range config.RemoteMachines {
+		if m.ID != "local" {
+			remoteCount++
+		}
+	}
+	return remoteCount > 0
+}
+
 func main() {
 	// Serve file statici
 	staticSub, err := fs.Sub(staticFS, "static")
@@ -88,23 +99,6 @@ func main() {
 	http.HandleFunc("/api/reboot-cascade-all", authMiddleware(adminMiddleware(rebootCascadeAllHandler)))
 	http.HandleFunc("/api/reboot-status", authMiddleware(adminMiddleware(rebootStatusHandler)))
 
-	http.HandleFunc("/api/sync-remotes", authMiddleware(adminMiddleware(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-			return
-		}
-		// Sincronizza entrambe le directory (data e configurazione)
-		go func() {
-			if err := SyncDirToAllRemotes(currentDataDir); err != nil {
-				log.Printf("Errore sync data: %v", err)
-			}
-			if err := SyncDirToAllRemotes(config.CurrentConfigurationDir); err != nil {
-				log.Printf("Errore sync config: %v", err)
-			}
-		}()
-		w.Write([]byte("Sincronizzazione avviata in background"))
-	})))
-
 	http.HandleFunc("/admin/remote-credentials", authMiddleware(adminMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			remoteCredentialsPageHandler(w, r)
@@ -123,7 +117,9 @@ func main() {
 	//sincronizzo i log ogni minuto
 	http.HandleFunc("/api/sync-audit-log", authMiddleware(adminMiddleware(SyncAuditLogNowHandler)))
 	StartAuditLogSyncTicker(1)
-
+	http.HandleFunc("/api/sync-remotes", authMiddleware(adminMiddleware(syncAllRemotesHandler)))
+	http.HandleFunc("/sync", authMiddleware(adminMiddleware(syncPageHandler)))
+	http.HandleFunc("/api/sync-events", authMiddleware(adminMiddleware(syncEventsHandler)))
 	// Avvia server HTTP sulla porta config.Port
 	go func() {
 		log.Printf("Server HTTP avviato su http://localhost:%s", config.Port)

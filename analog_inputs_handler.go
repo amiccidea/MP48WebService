@@ -46,6 +46,7 @@ func analogInputsPage(w http.ResponseWriter, r *http.Request) {
 		Permissions     map[string]bool
 		CPU             int
 		AvailableCPUs   []int
+		IsMultiCPU      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -54,6 +55,7 @@ func analogInputsPage(w http.ResponseWriter, r *http.Request) {
 		Permissions:     perms,
 		CPU:             cpuID,
 		AvailableCPUs:   availableCPUs,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }
