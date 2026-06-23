@@ -1,30 +1,78 @@
 {{define "machineStatusContent"}}
 <h1>🖥️ Info CPUs</h1>
-<div class="dashboard-grid">
-    <div class="card-modern">
-        <div class="card-header">Macchina principale</div>
-        <div class="card-body">
-            <ul class="info-list">
-                <li><strong>Stato:</strong> 🟢 Operativa</li>
-                <li><strong>CPU:</strong> 23%</li>
-                <li><strong>RAM:</strong> 512 MB / 1024 MB</li>
-            </ul>
-        </div>
-    </div>
-    <div class="card-modern">
-        <div class="card-header">Mirror</div>
-        <div class="card-body">
-            <ul class="info-list">
-                <li><strong>Stato:</strong> 🟢 Sincronizzato</li>
-                <li><strong>Latenza:</strong> &lt; 2 ms</li>
-            </ul>
+
+<!-- Macchina locale -->
+<div class="card-modern">
+    <div class="card-header">🖥️ Macchina principale</div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div>
+                <strong>Stato:</strong> 🟢 Operativa
+            </div>
+            <div>
+                <strong>Uptime:</strong> {{index .LocalInfo "Uptime"}}
+            </div>
+            <div>
+                <strong>Carico:</strong> {{index .LocalInfo "Load1"}} / {{index .LocalInfo "Load5"}} / {{index .LocalInfo "Load15"}}
+            </div>
+            <div>
+                <strong>RAM:</strong> {{index .LocalInfo "MemAvailable"}} / {{index .LocalInfo "MemTotal"}}
+            </div>
+            <div>
+                <strong>Disco:</strong> {{index .LocalInfo "DiskUsed"}} / {{index .LocalInfo "DiskTotal"}}
+            </div>
+            <div>
+                <strong>Swap:</strong> {{index .LocalInfo "SwapFree"}} / {{index .LocalInfo "SwapTotal"}}
+            </div>
         </div>
     </div>
 </div>
 
-<!-- Info macchina (se disponibili) -->
+<!-- Macchine remote -->
+{{if .RemoteInfos}}
+<div class="card-modern" style="margin-top: 1rem;">
+    <div class="card-header">🔄 Macchine remote</div>
+    <div class="card-body">
+        {{range .RemoteInfos}}
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+            <div>
+                <strong>{{.MachineName}}</strong><br>
+                <small style="color: #6c757d;">{{.Host}}</small>
+            </div>
+            <div>
+                <strong>Stato:</strong> 
+                {{if eq .Status "online"}}
+                🟢 {{.Status}}
+                {{else}}
+                🔴 offline
+                {{end}}
+                {{if .Error}}
+                <br><span style="color: #c00; font-size: 0.8rem;">{{.Error}}</span>
+                {{end}}
+            </div>
+            {{if eq .Status "online"}}
+            <div>
+                <strong>Uptime:</strong> {{.Uptime}}
+            </div>
+            <div>
+                <strong>Carico:</strong> {{.CPU}}
+            </div>
+            <div>
+                <strong>RAM:</strong> {{.MemUsed}} / {{.MemTotal}} (libera {{.MemFree}})
+            </div>
+            <div>
+                <strong>Disco (/):</strong> {{.DiskUsed}} / {{.DiskTotal}} (libero {{.DiskFree}})
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+    </div>
+</div>
+{{end}}
+
+<!-- Info macchina (info.txt, version.txt) -->
 {{if .MachineInfo}}
-<div class="card-modern" style="margin-top: 1.5rem;">
+<div class="card-modern" style="margin-top: 1rem;">
     <div class="card-header">📋 Informazioni sistema</div>
     <div class="card-body">
         <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
@@ -52,13 +100,13 @@
 </div>
 {{end}}
 
-<!-- Sezione configurazione di rete per tutte le CPU -->
-<div class="card-modern" style="margin-top: 1.5rem;">
+<!-- Interfacce di rete per tutte le CPU -->
+<div class="card-modern" style="margin-top: 1rem;">
     <div class="card-header">🌐 Configurazione interfacce di rete</div>
     <div class="card-body">
         {{if .CPUInterfaces}}
             {{range .CPUInterfaces}}
-            <div style="margin-bottom: 2rem;">
+            <div style="margin-bottom: 1.5rem;">
                 <h3 style="display: flex; align-items: center; gap: 0.5rem;">
                     CPU {{.CPU}}
                     {{if .IsLocal}}

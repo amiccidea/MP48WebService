@@ -44,7 +44,6 @@ func GetNetworkInterfaces() ([]InterfaceInfo, error) {
 	if config.NetworkInterfacesFile == "" {
 		return []InterfaceInfo{}, nil
 	}
-	// Usa il nuovo parser per consistenza
 	return ParseInterfaceFile(config.NetworkInterfacesFile)
 }
 
@@ -59,9 +58,8 @@ func ParseInterfaceFile(filePath string) ([]InterfaceInfo, error) {
 	}
 	defer file.Close()
 
-	// Mappa per accumulare le interfacce per nome
 	ifaceMap := make(map[string]*InterfaceInfo)
-	var ifaceOrder []string // per mantenere l'ordine
+	var ifaceOrder []string
 
 	scanner := bufio.NewScanner(file)
 	var currentName string
@@ -100,7 +98,6 @@ func ParseInterfaceFile(filePath string) ([]InterfaceInfo, error) {
 		}
 	}
 
-	// Converti la mappa in slice, solo le interfacce con indirizzo
 	var interfaces []InterfaceInfo
 	for _, name := range ifaceOrder {
 		if ifaceMap[name].Address != "" {
@@ -113,7 +110,6 @@ func ParseInterfaceFile(filePath string) ([]InterfaceInfo, error) {
 // GetAllNetworkInterfaces legge tutti i file interfaces_%d e restituisce le interfacce per CPU
 func GetAllNetworkInterfaces() ([]CPUInterfaces, error) {
 	if config.RemoteInterfacesPattern == "" {
-		// Fallback: usa il file singolo
 		ifaces, err := GetNetworkInterfaces()
 		if err != nil {
 			return nil, err
@@ -121,7 +117,6 @@ func GetAllNetworkInterfaces() ([]CPUInterfaces, error) {
 		return []CPUInterfaces{{CPU: 1, IsLocal: true, Interfaces: ifaces}}, nil
 	}
 
-	// Ottieni l'IP locale dal file delle interfacce
 	localIP, err := GetLocalIPFromFile()
 	if err != nil {
 		localIP = ""
@@ -140,7 +135,6 @@ func GetAllNetworkInterfaces() ([]CPUInterfaces, error) {
 			continue
 		}
 
-		// Verifica se questa CPU ha l'IP locale
 		isLocal := false
 		for _, iface := range ifaces {
 			if iface.Address == localIP {
@@ -235,16 +229,36 @@ func machineStatusHandler(w http.ResponseWriter, r *http.Request) {
 	username, isAdmin := getUserContext(r)
 	perms := getUserPermissions(username)
 
+	// Dati della macchina locale
+	localInfo := getSystemInfo() // da system_linux.go
+
+	// Interfacce di rete (tutte le CPU)
 	cpuInterfaces, err := GetAllNetworkInterfaces()
 	if err != nil {
 		log.Printf("Errore lettura interfacce: %v", err)
 		cpuInterfaces = []CPUInterfaces{}
 	}
 
+	// Info macchina (info.txt, version.txt)
 	machineInfo, err := GetMachineInfo()
 	if err != nil {
 		log.Printf("Errore lettura info macchina: %v", err)
 		machineInfo = nil
+	}
+
+	// Raccolta dati remoti (solo se ci sono macchine remote)
+	var remoteInfos []RemoteSystemInfo
+	for _, machine := range config.RemoteMachines {
+		if machine.ID == "local" {
+			continue
+		}
+		// Verifica che il Telnet sia configurato
+		if machine.Telnet.Username == "" || machine.Telnet.Password == "" {
+			continue
+		}
+		// Raccogli i dati
+		remoteInfo := GetRemoteSystemInfo(machine)
+		remoteInfos = append(remoteInfos, remoteInfo)
 	}
 
 	data := struct {
@@ -256,6 +270,8 @@ func machineStatusHandler(w http.ResponseWriter, r *http.Request) {
 		Permissions     map[string]bool
 		CPUInterfaces   []CPUInterfaces
 		MachineInfo     *MachineInfo
+		LocalInfo       map[string]string
+		RemoteInfos     []RemoteSystemInfo
 		IsMultiCPU      bool
 	}{
 		Username:        username,
@@ -266,6 +282,8 @@ func machineStatusHandler(w http.ResponseWriter, r *http.Request) {
 		Permissions:     perms,
 		CPUInterfaces:   cpuInterfaces,
 		MachineInfo:     machineInfo,
+		LocalInfo:       localInfo,
+		RemoteInfos:     remoteInfos,
 		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
