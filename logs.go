@@ -43,6 +43,8 @@ func logsPageHandler(w http.ResponseWriter, r *http.Request) {
 
 func scanAllLogs() ([]LogFileInfo, error) {
 	var allLogs []LogFileInfo
+
+	// Scansiona le categorie configurate
 	for _, cat := range config.LogCategories {
 		for _, dir := range cat.Directories {
 			logs, err := scanDirectory(dir, cat.Name)
@@ -53,6 +55,32 @@ func scanAllLogs() ([]LogFileInfo, error) {
 			allLogs = append(allLogs, logs...)
 		}
 	}
+
+	// 🔄 Aggiungi sempre l'audit log directory (se configurata)
+	if config.AuditLogDir != "" {
+		// Verifica che non sia già inclusa (per evitare duplicati)
+		alreadyIncluded := false
+		for _, cat := range config.LogCategories {
+			for _, dir := range cat.Directories {
+				if dir == config.AuditLogDir {
+					alreadyIncluded = true
+					break
+				}
+			}
+			if alreadyIncluded {
+				break
+			}
+		}
+		if !alreadyIncluded {
+			logs, err := scanDirectory(config.AuditLogDir, "Audit Logs")
+			if err != nil {
+				log.Printf("Errore scansione audit log %s: %v", config.AuditLogDir, err)
+			} else {
+				allLogs = append(allLogs, logs...)
+			}
+		}
+	}
+
 	return allLogs, nil
 }
 
