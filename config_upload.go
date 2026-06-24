@@ -15,7 +15,7 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Helper per visualizzare la pagina con messaggio (errore o successo)
+	// Helper per visualizzare la pagina con messaggio (solo GET)
 	renderPage := func(message string, isError bool) {
 		data := struct {
 			Username        string
@@ -40,100 +40,116 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if r.Method == http.MethodGet {
-		renderPage("", false)
+		// Controlla se ci sono messaggi dalla query string (dopo redirect)
+		msg := r.URL.Query().Get("msg")
+		errMsg := r.URL.Query().Get("err")
+		if msg != "" {
+			renderPage(msg, false)
+		} else if errMsg != "" {
+			renderPage(errMsg, true)
+		} else {
+			renderPage("", false)
+		}
 		return
 	}
 
-	if r.Method == http.MethodPost {
-		// 1. Leggi il file caricato
-		file, handler, err := r.FormFile("configfile")
-		if err != nil {
-			renderPage("Errore nel file: "+err.Error(), true)
-			return
-		}
-		defer file.Close()
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
 
-		// 2. Verifica directory configurazione corrente
-		if config.CurrentConfigurationDir == "" {
-			renderPage("Directory configurazione corrente non configurata", true)
-			return
-		}
-		if err := os.MkdirAll(config.CurrentConfigurationDir, 0755); err != nil {
-			renderPage("Errore creazione directory: "+err.Error(), true)
-			return
-		}
+	// ---- PROCESSO IL FILE ----
 
-		// 3. Salva il file caricato in un file temporaneo
-		tempFile, err := os.CreateTemp("", "upload_*.zip")
-		if err != nil {
-			renderPage("Errore salvataggio temporaneo: "+err.Error(), true)
-			return
-		}
-		tempPath := tempFile.Name()
-		defer os.Remove(tempPath)
-		if _, err := io.Copy(tempFile, file); err != nil {
-			tempFile.Close()
-			renderPage("Errore copia file: "+err.Error(), true)
-			return
-		}
+	// 1. Leggi il file caricato
+	file, handler, err := r.FormFile("configfile")
+	if err != nil {
+		log.Printf("Errore nel file: %v", err)
+		http.Redirect(w, r, "/config-upload?err=Errore nel file: "+err.Error(), http.StatusFound)
+		return
+	}
+	defer file.Close()
+
+	// 2. Verifica directory configurazione corrente
+	if config.CurrentConfigurationDir == "" {
+		http.Redirect(w, r, "/config-upload?err=Directory configurazione corrente non configurata", http.StatusFound)
+		return
+	}
+	if err := os.MkdirAll(config.CurrentConfigurationDir, 0755); err != nil {
+		log.Printf("Errore creazione directory: %v", err)
+		http.Redirect(w, r, "/config-upload?err=Errore creazione directory: "+err.Error(), http.StatusFound)
+		return
+	}
+
+	// 3. Salva il file caricato in un file temporaneo
+	tempFile, err := os.CreateTemp("", "upload_*.zip")
+	if err != nil {
+		log.Printf("Errore salvataggio temporaneo: %v", err)
+		http.Redirect(w, r, "/config-upload?err=Errore salvataggio temporaneo: "+err.Error(), http.StatusFound)
+		return
+	}
+	tempPath := tempFile.Name()
+	defer os.Remove(tempPath)
+	if _, err := io.Copy(tempFile, file); err != nil {
 		tempFile.Close()
+		log.Printf("Errore copia file: %v", err)
+		http.Redirect(w, r, "/config-upload?err=Errore copia file: "+err.Error(), http.StatusFound)
+		return
+	}
+	tempFile.Close()
 
-		// 4. Validazione del contenuto dell'archivio
-		requiredExtensions := config.ExtensionFilesConfig
-		if len(requiredExtensions) == 0 {
-			// Se non ci sono estensioni configurate, nessuna validazione
-			requiredExtensions = []string{}
-		}
+	// 4. Validazione del contenuto dell'archivio
+	requiredExtensions := config.ExtensionFilesConfig
+	if len(requiredExtensions) > 0 {
 		valid, err := validateArchiveContentRequired(tempPath, requiredExtensions)
 		if err != nil {
 			log.Printf("Errore validazione archivio: %v", err)
-			renderPage("Formato archivio non valido o danneggiato: "+err.Error(), true)
+			http.Redirect(w, r, "/config-upload?err=Formato archivio non valido: "+err.Error(), http.StatusFound)
 			return
 		}
 		if !valid {
-			renderPage(fmt.Sprintf("L'archivio non contiene tutti i tipi di file richiesti: %v", requiredExtensions), true)
+			http.Redirect(w, r, "/config-upload?err=L'archivio non contiene tutti i tipi di file richiesti: "+fmt.Sprintf("%v", requiredExtensions), http.StatusFound)
 			return
 		}
+	}
 
-		// 5. Backup dell'attuale directory corrente
-		backupPath, backupName, err := backupCurrentConfigDir()
-		if err != nil {
-			log.Printf("Errore backup: %v", err)
-			renderPage("Errore durante il backup della configurazione corrente: "+err.Error(), true)
-			return
-		}
-		log.Printf("Backup automatico creato: %s", backupName)
-
-		// 🔄 Sincronizza il backup sulle macchine remote
-		go func() {
-			// Sincronizza il singolo file di backup
-			if err := SyncFileToAllRemotes(backupPath); err != nil {
-				log.Printf("Errore sincronizzazione backup %s: %v", backupName, err)
-			} else {
-				log.Printf("✅ Backup %s sincronizzato sulle macchine remote", backupName)
-			}
-		}()
-
-		// 6. Estrai l'archivio nella directory corrente
-		if err := extractArchive(tempPath, config.CurrentConfigurationDir); err != nil {
-			log.Printf("Errore estrazione: %v", err)
-			renderPage("Errore durante l'estrazione dell'archivio: "+err.Error(), true)
-			return
-		}
-
-		// 7. Sincronizza i file estratti sulle macchine remote
-		go func() {
-			if err := SyncDirToAllRemotes(config.CurrentConfigurationDir); err != nil {
-				log.Printf("Errore sincronizzazione configurazione: %v", err)
-			} else {
-				log.Printf("✅ Configurazione sincronizzata sulle macchine remote")
-			}
-		}()
-		// 7. Log dell'operazione
-		WriteAuditLog("CONFIG_UPLOAD", username, fmt.Sprintf("caricato archivio %s (backup automatico: %s)", handler.Filename, backupName))
-
-		// 8. Mostra successo
-		renderPage("Archivio caricato ed estratto con successo. Backup automatico creato: "+backupName, false)
+	// 5. Backup dell'attuale directory corrente
+	backupPath, backupName, err := backupCurrentConfigDir()
+	if err != nil {
+		log.Printf("Errore backup: %v", err)
+		http.Redirect(w, r, "/config-upload?err=Errore durante il backup della configurazione corrente: "+err.Error(), http.StatusFound)
 		return
 	}
+	log.Printf("Backup automatico creato: %s", backupName)
+
+	// 6. Estrai l'archivio nella directory corrente
+	if err := extractArchive(tempPath, config.CurrentConfigurationDir); err != nil {
+		log.Printf("Errore estrazione: %v", err)
+		http.Redirect(w, r, "/config-upload?err=Errore durante l'estrazione dell'archivio: "+err.Error(), http.StatusFound)
+		return
+	}
+
+	// 7. Sincronizza il backup sulle macchine remote (in background)
+	go func() {
+		if err := SyncFileToAllRemotes(backupPath); err != nil {
+			log.Printf("Errore sincronizzazione backup %s: %v", backupName, err)
+		} else {
+			log.Printf("✅ Backup %s sincronizzato sulle macchine remote", backupName)
+		}
+	}()
+
+	// 8. Sincronizza la configurazione sulle macchine remote (in background)
+	go func() {
+		if err := SyncDirToAllRemotes(config.CurrentConfigurationDir); err != nil {
+			log.Printf("Errore sincronizzazione configurazione: %v", err)
+		} else {
+			log.Printf("✅ Configurazione sincronizzata sulle macchine remote")
+		}
+	}()
+
+	// 9. Log dell'operazione
+	WriteAuditLog("CONFIG_UPLOAD", username, fmt.Sprintf("caricato archivio %s (backup automatico: %s)", handler.Filename, backupName))
+
+	// 10. Redirect con messaggio di successo
+	msg := fmt.Sprintf("✅ Archivio caricato ed estratto con successo. Backup automatico creato: %s", backupName)
+	http.Redirect(w, r, "/config-upload?msg="+msg, http.StatusFound)
 }
