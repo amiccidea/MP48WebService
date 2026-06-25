@@ -146,6 +146,7 @@ func adminUserEditForm(w http.ResponseWriter, r *http.Request) {
 		IsProtected     bool
 		Permissions     map[string]bool
 		RolesList       []*Role
+		IsMultiCPU      bool
 	}{
 		Username:        usernameCtx,
 		IsAdmin:         true,
@@ -155,6 +156,7 @@ func adminUserEditForm(w http.ResponseWriter, r *http.Request) {
 		IsProtected:     isProtected,
 		Permissions:     perms,
 		RolesList:       rolesList,
+		IsMultiCPU:      isMultiCPU(),
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }
