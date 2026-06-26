@@ -8,16 +8,16 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-// Variabili per la sincronizzazione dell'audit log
 var (
 	auditLogSyncMutex sync.Mutex
-	auditLogLastSync  = make(map[string]time.Time) // path -> ultima modifica sincronizzata
+	auditLogLastSync  = make(map[string]time.Time)
 )
 
 func logsPageHandler(w http.ResponseWriter, r *http.Request) {
@@ -43,8 +43,6 @@ func logsPageHandler(w http.ResponseWriter, r *http.Request) {
 
 func scanAllLogs() ([]LogFileInfo, error) {
 	var allLogs []LogFileInfo
-
-	// Scansiona le categorie configurate
 	for _, cat := range config.LogCategories {
 		for _, dir := range cat.Directories {
 			logs, err := scanDirectory(dir, cat.Name)
@@ -58,7 +56,6 @@ func scanAllLogs() ([]LogFileInfo, error) {
 
 	// 🔄 Aggiungi sempre l'audit log directory (se configurata)
 	if config.AuditLogDir != "" {
-		// Verifica che non sia già inclusa (per evitare duplicati)
 		alreadyIncluded := false
 		for _, cat := range config.LogCategories {
 			for _, dir := range cat.Directories {
@@ -143,11 +140,13 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 	if ps, err := strconv.Atoi(pageSizeStr); err == nil && ps > 0 && ps <= 200 {
 		pageSize = ps
 	}
+
 	allLogs, err := scanAllLogs()
 	if err != nil {
 		http.Error(w, "Errore scansione log", http.StatusInternalServerError)
 		return
 	}
+
 	if category != "" && category != "all" {
 		filtered := []LogFileInfo{}
 		for _, l := range allLogs {
@@ -157,6 +156,7 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		allLogs = filtered
 	}
+
 	if startDate != "" || endDate != "" {
 		var startUnix, endUnix int64
 		if startDate != "" {
@@ -177,6 +177,12 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		allLogs = filtered
 	}
+
+	// 🔽 ORDINA PER DATA DECRESCENTE (dal più recente al più vecchio)
+	sort.Slice(allLogs, func(i, j int) bool {
+		return allLogs[i].ModTimeUnix > allLogs[j].ModTimeUnix
+	})
+
 	total := len(allLogs)
 	totalPages := (total + pageSize - 1) / pageSize
 	if page > totalPages && totalPages > 0 {
@@ -188,6 +194,7 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 		end = total
 	}
 	paginatedLogs := allLogs[start:end]
+
 	log.Printf("Trovati %d log, pagina %d/%d (size=%d)", total, page, totalPages, pageSize)
 	_, isAdmin := getUserContext(r)
 	w.Header().Set("Content-Type", "application/json")
@@ -259,7 +266,6 @@ func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	cleanPath := filepath.Clean(filePath)
 	log.Printf("Percorso pulito: %q", cleanPath)
 
-	// Verifica che il file sia in una directory consentita
 	allowed := false
 	for _, cat := range config.LogCategories {
 		for _, dir := range cat.Directories {
@@ -276,7 +282,6 @@ func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Elimina il file locale
 	if err := os.Remove(cleanPath); err != nil {
 		log.Printf("Errore eliminazione file %s: %v", cleanPath, err)
 		http.Error(w, "Errore eliminazione file", http.StatusInternalServerError)
@@ -285,7 +290,6 @@ func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
 
 	WriteAuditLog("LOG_DELETE", username, fmt.Sprintf("eliminato file log %s", cleanPath))
 
-	// 🔄 Sincronizza l'eliminazione del log sulle macchine remote (in background)
 	go func(path string) {
 		if err := SyncFileDeleteFromAllRemotes(path); err != nil {
 			log.Printf("❌ Errore sincronizzazione eliminazione log %s: %v", path, err)
@@ -302,7 +306,7 @@ func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
 // StartAuditLogSyncTicker avvia un ticker periodico per sincronizzare l'audit log
 func StartAuditLogSyncTicker(intervalMinutes int) {
 	if intervalMinutes <= 0 {
-		intervalMinutes = 5 // default: 5 minuti
+		intervalMinutes = 5
 	}
 	ticker := time.NewTicker(time.Duration(intervalMinutes) * time.Minute)
 	go func() {
@@ -320,11 +324,9 @@ func syncAuditLog() {
 		return
 	}
 
-	// Costruisci il nome del file di audit corrente
 	filename := fmt.Sprintf("LogMP48Ws_%s.log", time.Now().Format("20060102"))
 	auditPath := filepath.Join(config.AuditLogDir, filename)
 
-	// Verifica se il file esiste
 	info, err := os.Stat(auditPath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -337,7 +339,6 @@ func syncAuditLog() {
 
 	fileModTime := info.ModTime()
 
-	// Controlla se il file è stato modificato dopo l'ultima sincronizzazione
 	auditLogSyncMutex.Lock()
 	lastSync, ok := auditLogLastSync[auditPath]
 	if ok && !fileModTime.After(lastSync) {
@@ -347,14 +348,12 @@ func syncAuditLog() {
 	}
 	auditLogSyncMutex.Unlock()
 
-	// Sincronizza il file
 	log.Printf("📤 Sincronizzazione audit log: %s (modificato %s)", filename, fileModTime.Format("15:04:05"))
 	if err := SyncFileToAllRemotes(auditPath); err != nil {
 		log.Printf("❌ Errore sincronizzazione audit log %s: %v", filename, err)
 		return
 	}
 
-	// Aggiorna il timestamp di sincronizzazione
 	auditLogSyncMutex.Lock()
 	auditLogLastSync[auditPath] = fileModTime
 	auditLogSyncMutex.Unlock()
@@ -372,10 +371,7 @@ func SyncAuditLogNowHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Accesso negato", http.StatusForbidden)
 		return
 	}
-
-	// Esegue la sincronizzazione in background
 	go syncAuditLog()
-
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Sincronizzazione audit log avviata in background"))
 }
