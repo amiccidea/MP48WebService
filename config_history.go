@@ -89,7 +89,9 @@ func backupCurrentConfigDir() (string, string, error) {
 	return backupPath, backupName, nil
 }
 
-// ==================== ESTRAZIONE ARCHIVI ====================
+// ==================== ESTRAZIONE ARCHIVI CON PROTEZIONE ZIP SLIP ====================
+
+// extractArchive estrae un archivio con protezione Zip Slip
 func extractArchive(archivePath, destDir string) error {
 	ext := strings.ToLower(filepath.Ext(archivePath))
 	switch ext {
@@ -108,30 +110,45 @@ func extractArchive(archivePath, destDir string) error {
 	}
 }
 
+// extractZip estrae ZIP con protezione Zip Slip
 func extractZip(zipPath, destDir string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
+
+	destDir = filepath.Clean(destDir) + string(os.PathSeparator)
+
 	for _, f := range r.File {
 		fpath := filepath.Join(destDir, f.Name)
+		fpath = filepath.Clean(fpath)
+
+		// Protezione Zip Slip
+		if !strings.HasPrefix(fpath, destDir) {
+			return fmt.Errorf("tentativo di path traversal: %s", f.Name)
+		}
+
 		if f.FileInfo().IsDir() {
 			os.MkdirAll(fpath, os.ModePerm)
 			continue
 		}
+
 		if err := os.MkdirAll(filepath.Dir(fpath), os.ModePerm); err != nil {
 			return err
 		}
+
 		outFile, err := os.OpenFile(fpath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, f.Mode())
 		if err != nil {
 			return err
 		}
+
 		rc, err := f.Open()
 		if err != nil {
 			outFile.Close()
 			return err
 		}
+
 		_, err = io.Copy(outFile, rc)
 		outFile.Close()
 		rc.Close()
@@ -142,13 +159,17 @@ func extractZip(zipPath, destDir string) error {
 	return nil
 }
 
+// extractTar estrae TAR con protezione Zip Slip
 func extractTar(tarPath, destDir string) error {
 	f, err := os.Open(tarPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+
+	destDir = filepath.Clean(destDir) + string(os.PathSeparator)
 	tr := tar.NewReader(f)
+
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -157,7 +178,15 @@ func extractTar(tarPath, destDir string) error {
 		if err != nil {
 			return err
 		}
+
 		target := filepath.Join(destDir, header.Name)
+		target = filepath.Clean(target)
+
+		// Protezione Zip Slip
+		if !strings.HasPrefix(target, destDir) {
+			return fmt.Errorf("tentativo di path traversal: %s", header.Name)
+		}
+
 		switch header.Typeflag {
 		case tar.TypeDir:
 			os.MkdirAll(target, os.FileMode(header.Mode))
@@ -177,18 +206,23 @@ func extractTar(tarPath, destDir string) error {
 	return nil
 }
 
+// extractTarGz estrae TAR.GZ con protezione Zip Slip
 func extractTarGz(tarGzPath, destDir string) error {
 	f, err := os.Open(tarGzPath)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
+
 	gzr, err := gzip.NewReader(f)
 	if err != nil {
 		return err
 	}
 	defer gzr.Close()
+
+	destDir = filepath.Clean(destDir) + string(os.PathSeparator)
 	tr := tar.NewReader(gzr)
+
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
@@ -197,7 +231,15 @@ func extractTarGz(tarGzPath, destDir string) error {
 		if err != nil {
 			return err
 		}
+
 		target := filepath.Join(destDir, header.Name)
+		target = filepath.Clean(target)
+
+		// Protezione Zip Slip
+		if !strings.HasPrefix(target, destDir) {
+			return fmt.Errorf("tentativo di path traversal: %s", header.Name)
+		}
+
 		switch header.Typeflag {
 		case tar.TypeDir:
 			os.MkdirAll(target, os.FileMode(header.Mode))

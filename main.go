@@ -4,9 +4,9 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"strings"
 )
 
-// isMultiCPU restituisce true se ci sono macchine remote configurate (esclusa "local")
 func isMultiCPU() bool {
 	remoteCount := 0
 	for _, m := range config.RemoteMachines {
@@ -16,7 +16,6 @@ func isMultiCPU() bool {
 	}
 	return remoteCount > 0
 }
-
 func main() {
 	// Serve file statici
 	staticSub, err := fs.Sub(staticFS, "static")
@@ -109,34 +108,53 @@ func main() {
 		}
 	})))
 
+	// Sincronizzazione manuale
+	http.HandleFunc("/sync", authMiddleware(adminMiddleware(syncPageHandler)))
+	http.HandleFunc("/api/sync-remotes", authMiddleware(adminMiddleware(syncAllRemotesHandler)))
+	http.HandleFunc("/api/sync-events", authMiddleware(adminMiddleware(syncEventsHandler)))
+	http.HandleFunc("/api/sync-audit-log", authMiddleware(adminMiddleware(SyncAuditLogNowHandler)))
+
 	// Redirect home
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/alarms", http.StatusFound)
 	})
 
-	//sincronizzo i log ogni minuto
-	http.HandleFunc("/api/sync-audit-log", authMiddleware(adminMiddleware(SyncAuditLogNowHandler)))
-	StartAuditLogSyncTicker(1)
-	http.HandleFunc("/api/sync-remotes", authMiddleware(adminMiddleware(syncAllRemotesHandler)))
-	http.HandleFunc("/sync", authMiddleware(adminMiddleware(syncPageHandler)))
-	http.HandleFunc("/api/sync-events", authMiddleware(adminMiddleware(syncEventsHandler)))
-	// Avvia server HTTP sulla porta config.Port
-	go func() {
-		log.Printf("Server HTTP avviato su http://localhost:%s", config.Port)
-		if err := http.ListenAndServe(":"+config.Port, nil); err != nil {
-			log.Fatalf("Errore server HTTP: %v", err)
-		}
-	}()
-
-	// Avvia server HTTPS sulla porta config.PortSSL se i certificati sono configurati
+	// ---------- Avvio server con redirect HTTPS ----------
 	if config.TLSCertFile != "" && config.TLSKeyFile != "" {
-		log.Printf("Server HTTPS avviato su https://localhost:%s", config.PortSSL)
+		// Avvia il server HTTP che fa solo redirect a HTTPS
+		go func() {
+			log.Printf("🔄 Server HTTP (redirect) avviato su http://localhost:%s", config.Port)
+			if err := http.ListenAndServe(":"+config.Port, http.HandlerFunc(redirectToHTTPS)); err != nil {
+				log.Fatalf("Errore server HTTP (redirect): %v", err)
+			}
+		}()
+
+		// Avvia il server HTTPS
+		log.Printf("🔒 Server HTTPS avviato su https://localhost:%s", config.PortSSL)
 		if err := http.ListenAndServeTLS(":"+config.PortSSL, config.TLSCertFile, config.TLSKeyFile, nil); err != nil {
 			log.Fatalf("Errore server HTTPS: %v", err)
 		}
 	} else {
-		log.Println("Certificati TLS non configurati, server HTTPS non avviato")
-		// Mantiene il main in esecuzione
-		select {}
+		// Nessun certificato: solo HTTP
+		log.Printf("🌐 Server HTTP avviato su http://localhost:%s", config.Port)
+		if err := http.ListenAndServe(":"+config.Port, nil); err != nil {
+			log.Fatalf("Errore server HTTP: %v", err)
+		}
 	}
+}
+
+// redirectToHTTPS effettua il redirect a HTTPS mantenendo path e query
+func redirectToHTTPS(w http.ResponseWriter, r *http.Request) {
+	host := r.Host
+	// Se la porta non è 443, la aggiungiamo
+	if config.PortSSL != "" && config.PortSSL != "443" {
+		// Rimuovi eventuale porta esistente
+		host = strings.Split(host, ":")[0]
+		host = host + ":" + config.PortSSL
+	}
+	target := "https://" + host + r.URL.Path
+	if r.URL.RawQuery != "" {
+		target += "?" + r.URL.RawQuery
+	}
+	http.Redirect(w, r, target, http.StatusMovedPermanently)
 }

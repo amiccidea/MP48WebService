@@ -20,12 +20,18 @@ func init() {
 	os.MkdirAll(config.ConfigHistoryDir, 0755)
 	os.MkdirAll(config.UploadDir, 0755)
 
+	// Determina se usare cookie Secure (solo se HTTPS è configurato)
+	secureFlag := false
+	if config.TLSCertFile != "" && config.TLSKeyFile != "" {
+		secureFlag = true
+	}
+
 	store = sessions.NewCookieStore([]byte(config.SessionSecret))
 	store.MaxAge(config.SessionMaxAgeSecond)
 	store.Options = &sessions.Options{
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false,
+		Secure:   secureFlag,
 		SameSite: http.SameSiteLaxMode,
 	}
 
@@ -273,6 +279,26 @@ func getUserContext(r *http.Request) (username string, isAdmin bool) {
 	return
 }
 
+func isSessionAbsoluteExpired(session *sessions.Session) bool {
+	createdAtVal, ok := session.Values["created_at"]
+	if !ok {
+		return true // se non c'è, consideriamo scaduto per sicurezza
+	}
+	createdAt, ok := createdAtVal.(int64)
+	if !ok {
+		return true
+	}
+	absoluteHours := config.SessionAbsoluteHours
+	if absoluteHours <= 0 {
+		absoluteHours = 4 // default 4 ore
+	}
+	createdTime := time.Unix(createdAt, 0)
+	if time.Since(createdTime) > time.Duration(absoluteHours)*time.Hour {
+		return true
+	}
+	return false
+}
+
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		session, err := store.Get(r, "portal-session")
@@ -286,6 +312,15 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 		if isSessionExpired(session) {
+			session.Values["authenticated"] = false
+			session.Options.MaxAge = -1
+			session.Save(r, w)
+			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+
+		// Controllo timeout assoluto
+		if isSessionAbsoluteExpired(session) {
 			session.Values["authenticated"] = false
 			session.Options.MaxAge = -1
 			session.Save(r, w)
