@@ -5,6 +5,7 @@ import (
 	"archive/zip"
 	"compress/gzip"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net/http"
@@ -14,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/gorilla/csrf"
 )
 
 type CurrentFileInfo struct {
@@ -485,6 +488,8 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		EndDate         string
 		Permissions     map[string]bool
 		IsMultiCPU      bool
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -496,8 +501,13 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		EndDate:         endDate,
 		Permissions:     perms,
 		IsMultiCPU:      isMultiCPU(),
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r),
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering config history: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }
 
 // Download backup

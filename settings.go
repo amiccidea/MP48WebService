@@ -2,11 +2,14 @@ package main
 
 import (
 	"encoding/json"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
+
+	"github.com/gorilla/csrf"
 )
 
 func adminSettingsPage(w http.ResponseWriter, r *http.Request) {
@@ -20,6 +23,8 @@ func adminSettingsPage(w http.ResponseWriter, r *http.Request) {
 		PasswordExpiry  int
 		Permissions     map[string]bool
 		IsMultiCPU      bool
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        username,
 		IsAdmin:         true,
@@ -28,8 +33,13 @@ func adminSettingsPage(w http.ResponseWriter, r *http.Request) {
 		PasswordExpiry:  settings.PasswordExpiryDays,
 		Permissions:     perms,
 		IsMultiCPU:      isMultiCPU(),
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r),
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering settings: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }
 
 func adminSettingsSave(w http.ResponseWriter, r *http.Request) {

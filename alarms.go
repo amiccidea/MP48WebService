@@ -2,8 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"html/template"
 	"log"
 	"net/http"
+
+	"github.com/gorilla/csrf"
 )
 
 func alarmsHandler(w http.ResponseWriter, r *http.Request) {
@@ -27,16 +30,24 @@ func alarmsHandler(w http.ResponseWriter, r *http.Request) {
 		Permissions     map[string]bool
 		Signals         *SignalsData
 		IsMultiCPU      bool
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        username,
-		IsAdmin:         isAdmin,
-		Title:           "Allarmi",       // o "Alarms"
-		ContentTemplate: "alarmsContent", // o "alarmsContent" se rinominato
+		IsAdmin:         isAdmin, // ✅ usato!
+		Title:           "Allarmi",
+		ContentTemplate: "alarmsContent",
 		Permissions:     perms,
 		Signals:         signals,
 		IsMultiCPU:      isMultiCPU(),
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r), // ✅ aggiunto
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering alarms: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }
 
 func apiAlarmsHandler(w http.ResponseWriter, r *http.Request) {

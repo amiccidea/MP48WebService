@@ -92,10 +92,15 @@
 </div>
 
 <script>
+function getCSRFToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
 function confirmDelete(filename) {
     if (confirm('Sei sicuro di voler eliminare il backup ' + filename + '?')) {
         fetch('/config-history/delete/' + encodeURIComponent(filename), {
-            method: 'DELETE'
+            method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() } 
         }).then(response => {
             if (response.ok) {
                 window.location.reload();
@@ -105,10 +110,11 @@ function confirmDelete(filename) {
         }).catch(err => alert('Errore di rete'));
     }
 }
+
 function confirmRestore(filename) {
     if (confirm('⚠️ Attenzione: ripristinare questo backup sovrascriverà l\'intera configurazione corrente. Verrà creato un backup automatico dello stato attuale. Procedere?')) {
         fetch('/config-history/restore/' + encodeURIComponent(filename), {
-            method: 'POST'
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() }
         }).then(response => {
             if (response.ok) {
                 alert('Configurazione ripristinata con successo. Pagina verrà ricaricata.');

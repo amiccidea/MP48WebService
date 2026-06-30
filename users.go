@@ -1,11 +1,14 @@
 package main
 
 import (
+	"html/template"
 	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/gorilla/csrf"
 )
 
 // Lista utenti
@@ -28,6 +31,8 @@ func adminUsersPage(w http.ResponseWriter, r *http.Request) {
 		Permissions     map[string]bool
 		Roles           []*Role
 		IsMultiCPU      bool
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        username,
 		IsAdmin:         true,
@@ -37,8 +42,13 @@ func adminUsersPage(w http.ResponseWriter, r *http.Request) {
 		Permissions:     perms,
 		Roles:           roles,
 		IsMultiCPU:      isMultiCPU(),
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r),
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering users: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }
 
 // Crea utente
@@ -147,6 +157,8 @@ func adminUserEditForm(w http.ResponseWriter, r *http.Request) {
 		Permissions     map[string]bool
 		RolesList       []*Role
 		IsMultiCPU      bool
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        usernameCtx,
 		IsAdmin:         true,
@@ -157,8 +169,13 @@ func adminUserEditForm(w http.ResponseWriter, r *http.Request) {
 		Permissions:     perms,
 		RolesList:       rolesList,
 		IsMultiCPU:      isMultiCPU(),
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r),
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering user edit: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }
 
 // Salva modifiche utente (e reset password)

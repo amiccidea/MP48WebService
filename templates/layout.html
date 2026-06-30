@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>MP48 Web Station - {{.Title}}</title>
     <link rel="stylesheet" href="/static/css/custom.css">
+    {{ if .CSRFToken }}
+    <meta name="csrf-token" content="{{ .CSRFToken }}">
+    {{ end }}
 </head>
 <body>
     <button class="menu-toggle" id="menuToggle">☰ Menu</button>

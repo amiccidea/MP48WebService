@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
 	"net"
 	"net/http"
@@ -11,6 +12,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gorilla/csrf"
 )
 
 type RebootOperation struct {
@@ -252,6 +255,8 @@ func rebootPageHandler(w http.ResponseWriter, r *http.Request) {
 		Permissions     map[string]bool
 		RemoteMachines  []RemoteMachine
 		IsMultiCPU      bool
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -260,8 +265,13 @@ func rebootPageHandler(w http.ResponseWriter, r *http.Request) {
 		Permissions:     perms,
 		RemoteMachines:  config.RemoteMachines,
 		IsMultiCPU:      isMultiCPU(),
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r),
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering reboot page: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }
 
 func rebootLocalHandler(w http.ResponseWriter, r *http.Request) {

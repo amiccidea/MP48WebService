@@ -5,6 +5,8 @@ import (
 	"log"
 	"net/http"
 	"strings"
+
+	"github.com/gorilla/csrf"
 )
 
 func isMultiCPU() bool {
@@ -119,6 +121,21 @@ func main() {
 		http.Redirect(w, r, "/alarms", http.StatusFound)
 	})
 
+	// Avvolgi il router principale con il middleware CSRF
+	// Usa la stessa chiave di sessione per CSRF (o una separata)
+	csrfMiddleware := csrf.Protect(
+		[]byte(config.SessionSecret),          // usa la stessa chiave
+		csrf.Secure(config.TLSCertFile != ""), // secure solo se HTTPS è abilitato
+		csrf.Path("/"),
+		csrf.ErrorHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Error(w, "CSRF token non valido", http.StatusForbidden)
+		})),
+	)
+
+	// Avvia i server applicando il middleware al router principale
+	// Se usi http.DefaultServeMux, avvolgi tutto:
+	handler := csrfMiddleware(http.DefaultServeMux)
+
 	// ---------- Avvio server con redirect HTTPS ----------
 	if config.TLSCertFile != "" && config.TLSKeyFile != "" {
 		// Avvia il server HTTP che fa solo redirect a HTTPS
@@ -131,13 +148,13 @@ func main() {
 
 		// Avvia il server HTTPS
 		log.Printf("🔒 Server HTTPS avviato su https://localhost:%s", config.PortSSL)
-		if err := http.ListenAndServeTLS(":"+config.PortSSL, config.TLSCertFile, config.TLSKeyFile, nil); err != nil {
+		if err := http.ListenAndServeTLS(":"+config.PortSSL, config.TLSCertFile, config.TLSKeyFile, handler); err != nil {
 			log.Fatalf("Errore server HTTPS: %v", err)
 		}
 	} else {
 		// Nessun certificato: solo HTTP
 		log.Printf("🌐 Server HTTP avviato su http://localhost:%s", config.Port)
-		if err := http.ListenAndServe(":"+config.Port, nil); err != nil {
+		if err := http.ListenAndServe(":"+config.Port, handler); err != nil {
 			log.Fatalf("Errore server HTTP: %v", err)
 		}
 	}

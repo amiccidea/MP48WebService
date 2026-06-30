@@ -129,6 +129,11 @@
         });
     }
 
+    function getCSRFToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
+    }
+
     function createPermCheckboxes() {
         let container = document.getElementById('permsContainer');
         container.innerHTML = '';
@@ -162,7 +167,7 @@
         for (let p in perms) {
             formData.append(p, perms[p] ? 'on' : 'off');
         }
-        const resp = await fetch('/admin/roles/update', { method: 'POST', body: formData });
+        const resp = await fetch('/admin/roles/update', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() }, body: formData });
         if (resp.ok) window.location.reload();
         else alert('Errore salvataggio');
     };

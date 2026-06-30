@@ -11,6 +11,7 @@
             {{end}}
         {{end}}
         <form id="uploadForm" method="POST" enctype="multipart/form-data">
+            {{ .CSRFField }}
             <label for="configfile" class="form-label">File archivio (.zip, .tar, .tar.gz) contenente la configurazione</label>
             <input type="file" name="configfile" id="configfile" required accept=".zip,.tar,.tar.gz,.tgz">
             <br><br>

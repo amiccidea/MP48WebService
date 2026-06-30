@@ -1,8 +1,11 @@
 package main
 
 import (
+	"html/template"
 	"log"
 	"net/http"
+
+	"github.com/gorilla/csrf"
 )
 
 func remoteCredentialsPageHandler(w http.ResponseWriter, r *http.Request) {
@@ -40,6 +43,8 @@ func remoteCredentialsPageHandler(w http.ResponseWriter, r *http.Request) {
 		Credentials     map[string]RemoteCredential
 		HasCredentials  bool
 		IsMultiCPU      bool
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -50,8 +55,13 @@ func remoteCredentialsPageHandler(w http.ResponseWriter, r *http.Request) {
 		Credentials:     creds.Machines,
 		HasCredentials:  len(creds.Machines) > 0,
 		IsMultiCPU:      isMultiCPU(),
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r),
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering remote credential: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }
 
 func remoteCredentialsSaveHandler(w http.ResponseWriter, r *http.Request) {

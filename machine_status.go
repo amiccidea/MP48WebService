@@ -3,11 +3,14 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/gorilla/csrf"
 )
 
 // InterfaceInfo contiene i dati di una singola interfaccia
@@ -273,6 +276,8 @@ func machineStatusHandler(w http.ResponseWriter, r *http.Request) {
 		LocalInfo       map[string]string
 		RemoteInfos     []RemoteSystemInfo
 		IsMultiCPU      bool
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -285,6 +290,11 @@ func machineStatusHandler(w http.ResponseWriter, r *http.Request) {
 		LocalInfo:       localInfo,
 		RemoteInfos:     remoteInfos,
 		IsMultiCPU:      isMultiCPU(),
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r),
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering info CPUs: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }

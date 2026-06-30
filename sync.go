@@ -3,12 +3,15 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/gorilla/csrf"
 )
 
 var (
@@ -44,6 +47,8 @@ func syncPageHandler(w http.ResponseWriter, r *http.Request) {
 		Permissions     map[string]bool
 		IsMultiCPU      bool
 		SyncLogPath     string
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -52,8 +57,13 @@ func syncPageHandler(w http.ResponseWriter, r *http.Request) {
 		Permissions:     perms,
 		IsMultiCPU:      isMultiCPU(),
 		SyncLogPath:     syncLogPath,
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r),
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering sync page: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }
 
 // ==================== ENDPOINT AVVIO SINCORONIZZAZIONE ====================

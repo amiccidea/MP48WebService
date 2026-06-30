@@ -2,9 +2,12 @@ package main
 
 import (
 	"encoding/json"
+	"html/template"
 	"log"
 	"net/http"
 	"strconv"
+
+	"github.com/gorilla/csrf"
 )
 
 func analogInputsPage(w http.ResponseWriter, r *http.Request) {
@@ -47,6 +50,8 @@ func analogInputsPage(w http.ResponseWriter, r *http.Request) {
 		CPU             int
 		AvailableCPUs   []int
 		IsMultiCPU      bool
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -56,8 +61,13 @@ func analogInputsPage(w http.ResponseWriter, r *http.Request) {
 		CPU:             cpuID,
 		AvailableCPUs:   availableCPUs,
 		IsMultiCPU:      isMultiCPU(),
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r),
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering analog inputs: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }
 
 func apiAnalogInputsHandler(w http.ResponseWriter, r *http.Request) {

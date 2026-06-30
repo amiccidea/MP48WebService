@@ -3,10 +3,13 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"html/template"
 	"io"
 	"log"
 	"net/http"
 	"os"
+
+	"github.com/gorilla/csrf"
 )
 
 // MaxUploadSize è il limite massimo per i file di configurazione (2MB)
@@ -29,6 +32,8 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Permissions     map[string]bool
 			IsError         bool
 			IsMultiCPU      bool
+			CSRFField       template.HTML
+			CSRFToken       string
 		}{
 			Username:        username,
 			IsAdmin:         isAdmin,
@@ -38,8 +43,14 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 			Permissions:     getUserPermissions(username),
 			IsError:         isError,
 			IsMultiCPU:      isMultiCPU(),
+			CSRFField:       csrf.TemplateField(r),
+			CSRFToken:       csrf.Token(r),
 		}
-		tmpl.ExecuteTemplate(w, "layout.html", data)
+
+		if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+			log.Printf("❌ Errore rendering config upload: %v", err)
+			http.Error(w, "Errore interno", http.StatusInternalServerError)
+		}
 	}
 
 	if r.Method == http.MethodGet {

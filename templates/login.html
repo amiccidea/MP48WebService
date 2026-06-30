@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Login - RTU Portal</title>
     <link rel="stylesheet" href="/static/css/custom.css">
+        {{ if .CSRFToken }}
+    <meta name="csrf-token" content="{{ .CSRFToken }}">
+    {{ end }}
     <style>
         body {
             background: var(--sap-bg-page);
@@ -84,6 +87,7 @@
             <div class="card-header">🔐 Accesso al portale RTU</div>
             <div class="card-body">
                 <form method="POST">
+                    {{ .CSRFField }}
                     <div>
                         <label for="username">Username</label>
                         <div class="input-wrapper">

@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gorilla/csrf"
 	"github.com/gorilla/sessions"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -137,10 +138,16 @@ func initDefaultUsers() {
 	}
 }
 
+// In una funzione helper, o in getLayoutData:
+func getCSRFField(r *http.Request) template.HTML {
+	return csrf.TemplateField(r)
+}
+
 func getLayoutData(r *http.Request, title, contentTemplate string) map[string]interface{} {
 	username, isAdmin := getUserContext(r)
 	perms := getUserPermissions(username)
 	multiCPU := isMultiCPU()
+	token := csrf.Token(r)
 	log.Printf("DEBUG: Username=%s, IsAdmin=%v, IsMultiCPU=%v", username, isAdmin, multiCPU)
 	return map[string]interface{}{
 		"Username":        username,
@@ -149,6 +156,8 @@ func getLayoutData(r *http.Request, title, contentTemplate string) map[string]in
 		"ContentTemplate": contentTemplate,
 		"Permissions":     perms,
 		"IsMultiCPU":      multiCPU,
+		"CSRFToken":       token,
+		"CSRFField":       csrf.TemplateField(r),
 	}
 }
 
@@ -347,7 +356,11 @@ func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 // Login handler
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
-		tmpl.ExecuteTemplate(w, "login.html", nil)
+		data := map[string]interface{}{
+			"csrfField": csrf.TemplateField(r), // minuscolo per il template
+			"CSRFToken": csrf.Token(r),         // maiuscolo per il meta
+		}
+		tmpl.ExecuteTemplate(w, "login.html", data)
 		return
 	}
 	username := strings.TrimSpace(r.FormValue("username"))

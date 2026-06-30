@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"log"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gorilla/csrf"
 )
 
 var (
@@ -30,6 +33,8 @@ func logsPageHandler(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate string
 		Permissions     map[string]bool
 		IsMultiCPU      bool
+		CSRFField       template.HTML
+		CSRFToken       string
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -37,8 +42,13 @@ func logsPageHandler(w http.ResponseWriter, r *http.Request) {
 		ContentTemplate: "logsContent",
 		Permissions:     perms,
 		IsMultiCPU:      isMultiCPU(),
+		CSRFField:       csrf.TemplateField(r),
+		CSRFToken:       csrf.Token(r),
 	}
-	tmpl.ExecuteTemplate(w, "layout.html", data)
+	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
+		log.Printf("❌ Errore rendering logs history: %v", err)
+		http.Error(w, "Errore interno", http.StatusInternalServerError)
+	}
 }
 
 func scanAllLogs() ([]LogFileInfo, error) {

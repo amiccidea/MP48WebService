@@ -4,6 +4,7 @@
     <div class="card-header">Crea nuovo utente</div>
     <div class="card-body">
         <form method="POST" action="/admin/users/create" style="display:flex; gap:1rem; align-items:flex-end;">
+            {{ .CSRFField }}
             <div style="flex:2">
                 <label>Username</label>
                 <input type="text" name="username" required>
