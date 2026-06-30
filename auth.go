@@ -357,8 +357,8 @@ func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		data := map[string]interface{}{
-			"csrfField": csrf.TemplateField(r), // minuscolo per il template
-			"CSRFToken": csrf.Token(r),         // maiuscolo per il meta
+			"CSRFField": csrf.TemplateField(r),
+			"CSRFToken": csrf.Token(r),
 		}
 		tmpl.ExecuteTemplate(w, "login.html", data)
 		return
@@ -414,6 +414,8 @@ func changePasswordPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Forced":              true,
 		"OldPasswordRequired": false,
+		"CSRFField":           csrf.TemplateField(r),
+		"CSRFToken":           csrf.Token(r),
 	}
 	tmpl.ExecuteTemplate(w, "change_password.html", data)
 }
@@ -508,6 +510,8 @@ func profileChangePasswordPage(w http.ResponseWriter, r *http.Request) {
 	data := map[string]interface{}{
 		"Forced":              false,
 		"OldPasswordRequired": true,
+		"CSRFField":           csrf.TemplateField(r),
+		"CSRFToken":           csrf.Token(r),
 	}
 	tmpl.ExecuteTemplate(w, "change_password.html", data)
 }
