@@ -5,7 +5,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
 	"syscall"
 )
@@ -60,11 +59,11 @@ func getSystemInfo() map[string]string {
 	info["DiskUsed"] = fmt.Sprintf("%d MiB", used/(1024*1024))
 	info["DiskFree"] = fmt.Sprintf("%d MiB", free/(1024*1024))
 
-	info["GoVersion"] = runtime.Version()
+	/*info["GoVersion"] = runtime.Version()
 	info["GOARCH"] = runtime.GOARCH
 	info["GOOS"] = runtime.GOOS
 	info["GOMAXPROCS"] = fmt.Sprintf("%d", runtime.GOMAXPROCS(0))
-	info["GOGC"] = fmt.Sprintf("%d", 100) // default, lo puoi cambiare con env
+	info["GOGC"] = fmt.Sprintf("%d", 100) // default, lo puoi cambiare con env*/
 
 	return info
 }

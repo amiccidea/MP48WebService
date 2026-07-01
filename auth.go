@@ -21,7 +21,6 @@ func init() {
 	os.MkdirAll(config.ConfigHistoryDir, 0755)
 	os.MkdirAll(config.UploadDir, 0755)
 
-	// Determina se usare cookie Secure (solo se HTTPS è configurato)
 	secureFlag := false
 	if config.TLSCertFile != "" && config.TLSKeyFile != "" {
 		secureFlag = true
@@ -47,7 +46,6 @@ func init() {
 	}
 	tmpl = template.Must(template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/*.html"))
 
-	// Inizializza persistenza
 	currentDataDir = config.DataDir
 	if currentDataDir == "" {
 		currentDataDir = "./data"
@@ -71,11 +69,9 @@ func init() {
 		saveRoles(currentDataDir)
 	}
 
-	// Carica credenziali remote (dopo che currentDataDir è impostato)
 	loadRemoteCredentialsFromDir()
 }
 
-// loadRemoteCredentialsFromDir carica le credenziali remote e le applica a config.RemoteMachines
 func loadRemoteCredentialsFromDir() {
 	remoteCreds, err := loadRemoteCredentials(currentDataDir)
 	if err != nil {
@@ -98,6 +94,7 @@ func loadRemoteCredentialsFromDir() {
 		log.Println("AVVISO: Nessuna credenziale remota configurata. Usare l'interfaccia admin per impostarle.")
 	}
 }
+
 func initDefaultUsers() {
 	if len(users) > 0 {
 		return
@@ -138,7 +135,6 @@ func initDefaultUsers() {
 	}
 }
 
-// In una funzione helper, o in getLayoutData:
 func getCSRFField(r *http.Request) template.HTML {
 	return csrf.TemplateField(r)
 }
@@ -238,12 +234,10 @@ func isPasswordExpired(u *User) bool {
 	return time.Since(u.PasswordChangedAt) > time.Duration(settings.PasswordExpiryDays)*24*time.Hour
 }
 
-// updateSessionActivity aggiorna il timestamp di ultima attività nella sessione.
 func updateSessionActivity(session *sessions.Session) {
 	session.Values["last_activity"] = time.Now().Unix()
 }
 
-// isSessionExpired controlla se la sessione è scaduta per inattività.
 func isSessionExpired(session *sessions.Session) bool {
 	lastActivityVal, ok := session.Values["last_activity"]
 	if !ok {
@@ -291,7 +285,7 @@ func getUserContext(r *http.Request) (username string, isAdmin bool) {
 func isSessionAbsoluteExpired(session *sessions.Session) bool {
 	createdAtVal, ok := session.Values["created_at"]
 	if !ok {
-		return true // se non c'è, consideriamo scaduto per sicurezza
+		return true
 	}
 	createdAt, ok := createdAtVal.(int64)
 	if !ok {
@@ -299,7 +293,7 @@ func isSessionAbsoluteExpired(session *sessions.Session) bool {
 	}
 	absoluteHours := config.SessionAbsoluteHours
 	if absoluteHours <= 0 {
-		absoluteHours = 4 // default 4 ore
+		absoluteHours = 4
 	}
 	createdTime := time.Unix(createdAt, 0)
 	if time.Since(createdTime) > time.Duration(absoluteHours)*time.Hour {
@@ -327,8 +321,6 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
-
-		// Controllo timeout assoluto
 		if isSessionAbsoluteExpired(session) {
 			session.Values["authenticated"] = false
 			session.Options.MaxAge = -1
@@ -353,7 +345,7 @@ func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// Login handler
+// ==================== LOGIN HANDLER (CORRETTO) ====================
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		data := map[string]interface{}{
@@ -365,6 +357,9 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
+
+	// LOG DI DEBUG
+	log.Printf("🔍 Login tentativo per %s", username)
 
 	if authenticateLocal(username, password) {
 		u := getUserByUsername(username)
@@ -379,6 +374,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, "/change-password", http.StatusFound)
 			return
 		}
+
+		// Sessione (senza rigenerazione per ora)
 		session, _ := store.Get(r, "portal-session")
 		session.Values["authenticated"] = true
 		session.Values["username"] = username
@@ -387,7 +384,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		session.Values["last_activity"] = now
 		session.Values["created_at"] = now
 		session.Save(r, w)
-		log.Printf("Login riuscito per %s (admin=%v)", username, u.Role == RoleAdmin)
+
+		log.Printf("Login riuscito per %s", username)
 		WriteAuditLog("login_success", username, "Login riuscito")
 		http.Redirect(w, r, "/alarms", http.StatusFound)
 		return
@@ -403,7 +401,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Change password handlers
+// ==================== CHANGE PASSWORD HANDLERS ====================
 func changePasswordPage(w http.ResponseWriter, r *http.Request) {
 	session, _ := store.Get(r, "portal-session")
 	pending := session.Values["pending_user"]
@@ -487,7 +485,6 @@ func changePasswordPost(w http.ResponseWriter, r *http.Request) {
 	userMutex.Unlock()
 	saveUsers(currentDataDir)
 
-	// 🔄 Sincronizza il file users.enc sulle macchine remote (cambio password forzato)
 	go func(userName string) {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
@@ -588,7 +585,6 @@ func profileChangePasswordPost(w http.ResponseWriter, r *http.Request) {
 	u.LastModified = time.Now()
 	saveUsers(currentDataDir)
 
-	// 🔄 Sincronizza il file users.enc sulle macchine remote (cambio password volontario)
 	go func(userName string) {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {

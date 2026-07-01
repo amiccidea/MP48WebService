@@ -2,10 +2,6 @@
 
 package main
 
-import (
-	"runtime"
-)
-
 func getSystemInfo() map[string]string {
 	return map[string]string{
 		"Uptime":       "Debug mode (Windows)",
@@ -19,10 +15,5 @@ func getSystemInfo() map[string]string {
 		"DiskTotal":    "Simulated 32 GB",
 		"DiskUsed":     "Simulated 8 GB",
 		"DiskFree":     "Simulated 24 GB",
-		"GoVersion":    runtime.Version(),
-		"GOARCH":       runtime.GOARCH,
-		"GOOS":         runtime.GOOS,
-		"GOMAXPROCS":   "2",
-		"GOGC":         "100",
 	}
 }

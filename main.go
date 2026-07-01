@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gorilla/csrf"
 )
@@ -18,6 +19,7 @@ func isMultiCPU() bool {
 	}
 	return remoteCount > 0
 }
+
 func main() {
 	// Serve file statici
 	staticSub, err := fs.Sub(staticFS, "static")
@@ -26,8 +28,15 @@ func main() {
 	}
 	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
 
-	// Route pubbliche
-	http.HandleFunc("/login", loginHandler)
+	// ---------- RATE LIMITER ----------
+	// 5 tentativi al minuto per login
+	loginLimiter := NewRateLimiter(5, 1*time.Minute)
+	// 10 tentativi al minuto per creazione utenti
+	createUserLimiter := NewRateLimiter(10, 1*time.Minute)
+
+	// ---------- ROUTE ----------
+	// Route pubbliche (con rate limiting)
+	http.HandleFunc("/login", RateLimitMiddleware(loginLimiter, loginHandler))
 	http.HandleFunc("/change-password", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
 			changePasswordPage(w, r)
@@ -38,7 +47,7 @@ func main() {
 		}
 	})
 
-	// Route protette
+	// Route protette (senza rate limiting)
 	http.HandleFunc("/alarms", authMiddleware(permissionMiddleware(PermAlarms)(alarmsHandler)))
 	http.HandleFunc("/api/alarms", authMiddleware(apiAlarmsHandler))
 	http.HandleFunc("/analog-inputs", authMiddleware(permissionMiddleware(PermAnalogInputs)(analogInputsPage)))
@@ -56,9 +65,9 @@ func main() {
 	http.HandleFunc("/config-history/restore/", authMiddleware(adminMiddleware(configHistoryRestoreHandler)))
 	http.HandleFunc("/config-upload", authMiddleware(adminMiddleware(configUploadHandler)))
 
-	// Route admin
+	// Route admin (con rate limiting su creazione utenti)
 	http.HandleFunc("/admin/users", authMiddleware(adminMiddleware(adminUsersPage)))
-	http.HandleFunc("/admin/users/create", authMiddleware(adminMiddleware(adminUserCreate)))
+	http.HandleFunc("/admin/users/create", RateLimitMiddleware(createUserLimiter, authMiddleware(adminMiddleware(adminUserCreate))))
 	http.HandleFunc("/admin/users/delete", authMiddleware(adminMiddleware(adminUserDelete)))
 	http.HandleFunc("/admin/users/edit", authMiddleware(adminMiddleware(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet {
@@ -121,24 +130,42 @@ func main() {
 		http.Redirect(w, r, "/alarms", http.StatusFound)
 	})
 
-	// Avvolgi il router principale con il middleware CSRF
-	// Usa la stessa chiave di sessione per CSRF (o una separata)
+	// ---------- MIDDLEWARE ----------
+	// 1. CSRF Protection (escluso /login e /change-password)
 	csrfMiddleware := csrf.Protect(
-		[]byte(config.SessionSecret),          // usa la stessa chiave
-		csrf.Secure(config.TLSCertFile != ""), // secure solo se HTTPS è abilitato
+		[]byte(config.SessionSecret),
+		csrf.Secure(false), // Disabilitato per test (certificato autofirmato)
 		csrf.Path("/"),
 		csrf.ErrorHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			log.Printf("CSRF error: %s", r.URL.Path)
 			http.Error(w, "CSRF token non valido", http.StatusForbidden)
 		})),
 	)
 
-	// Avvia i server applicando il middleware al router principale
-	// Se usi http.DefaultServeMux, avvolgi tutto:
-	handler := csrfMiddleware(http.DefaultServeMux)
+	// Route da escludere dalla protezione CSRF
+	excludedPaths := map[string]bool{
+		"/login":           true,
+		"/change-password": true,
+	}
 
-	// ---------- Avvio server con redirect HTTPS ----------
+	// Handler finale con middleware applicati in ordine
+	finalHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Applica sempre logging e security headers
+		handler := LoggingMiddleware(SecurityHeadersMiddleware(http.DefaultServeMux))
+
+		// Se la route è esclusa da CSRF, bypassa il middleware CSRF
+		if excludedPaths[r.URL.Path] {
+			handler.ServeHTTP(w, r)
+		} else {
+			// Altrimenti applica anche CSRF
+			csrfHandler := csrfMiddleware(http.DefaultServeMux)
+			csrfHandler.ServeHTTP(w, r)
+		}
+	})
+
+	// ---------- AVVIO SERVER ----------
 	if config.TLSCertFile != "" && config.TLSKeyFile != "" {
-		// Avvia il server HTTP che fa solo redirect a HTTPS
+		// Server HTTP (redirect)
 		go func() {
 			log.Printf("🔄 Server HTTP (redirect) avviato su http://localhost:%s", config.Port)
 			if err := http.ListenAndServe(":"+config.Port, http.HandlerFunc(redirectToHTTPS)); err != nil {
@@ -146,15 +173,15 @@ func main() {
 			}
 		}()
 
-		// Avvia il server HTTPS
+		// Server HTTPS
 		log.Printf("🔒 Server HTTPS avviato su https://localhost:%s", config.PortSSL)
-		if err := http.ListenAndServeTLS(":"+config.PortSSL, config.TLSCertFile, config.TLSKeyFile, handler); err != nil {
+		if err := http.ListenAndServeTLS(":"+config.PortSSL, config.TLSCertFile, config.TLSKeyFile, finalHandler); err != nil {
 			log.Fatalf("Errore server HTTPS: %v", err)
 		}
 	} else {
-		// Nessun certificato: solo HTTP
+		// Solo HTTP
 		log.Printf("🌐 Server HTTP avviato su http://localhost:%s", config.Port)
-		if err := http.ListenAndServe(":"+config.Port, handler); err != nil {
+		if err := http.ListenAndServe(":"+config.Port, finalHandler); err != nil {
 			log.Fatalf("Errore server HTTP: %v", err)
 		}
 	}
@@ -163,9 +190,7 @@ func main() {
 // redirectToHTTPS effettua il redirect a HTTPS mantenendo path e query
 func redirectToHTTPS(w http.ResponseWriter, r *http.Request) {
 	host := r.Host
-	// Se la porta non è 443, la aggiungiamo
 	if config.PortSSL != "" && config.PortSSL != "443" {
-		// Rimuovi eventuale porta esistente
 		host = strings.Split(host, ":")[0]
 		host = host + ":" + config.PortSSL
 	}
