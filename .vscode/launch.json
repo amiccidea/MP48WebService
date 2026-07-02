@@ -7,10 +7,10 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceFolder}",
-            "env": {},
-            "args": [],
-            "showLog": true,
-            "trace": "verbose"
+            "buildFlags": "-gcflags=\"all=-N -l\"",
+            "dlvFlags": ["--check-go-version=false"],
+            "showLog": false,
+            "trace": "log"
         }
     ]
 }
