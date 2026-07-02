@@ -51,12 +51,20 @@ func init() {
 		currentDataDir = "./data"
 	}
 	os.MkdirAll(currentDataDir, 0700)
-	keyPath := filepath.Join(currentDataDir, "encryption.key")
+
+	// ---------- PATCH: chiave crittografia da percorso esterno ----------
+	keyPath := config.EncryptionKeyPath
+	if keyPath == "" {
+		// Fallback alla vecchia posizione se non configurato
+		keyPath = filepath.Join(currentDataDir, "encryption.key")
+	}
 	var err error
 	encryptionKey, err = loadOrGenerateKey(keyPath)
 	if err != nil {
 		log.Fatal("Errore chiave crittografia:", err)
 	}
+	// --------------------------------------------------------------------
+
 	if err := loadUsers(currentDataDir); err != nil {
 		log.Printf("Errore caricamento utenti, inizializzo default: %v", err)
 		userMutex.Lock()

@@ -10,6 +10,7 @@
         ".zip"
     ],
     "config_history_dir": "/home/andrea/Documenti/GitDea/test/config_backups",
+    "encryption_key_path": "/etc/MP48WebService/encryption.key",
     "current_configuration_dir": "/home/andrea/Documenti/GitDea/test/ConfigMp48",
     "data_dir": "/home/andrea/Documenti/GitDea/MP48WebService/data",
     "extension_files_config": [

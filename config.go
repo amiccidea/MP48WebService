@@ -73,6 +73,7 @@ type Config struct {
 	LogCategories           []LogCategory   `json:"log_categories"`
 	ProtectedUsers          []string        `json:"protected_users"`
 	DataDir                 string          `json:"data_dir"`
+	EncryptionKeyPath       string          `json:"encryption_key_path"`
 	AuditLogDir             string          `json:"audit_log_dir"`
 	CurrentConfigurationDir string          `json:"current_configuration_dir"`
 	CfWebFile               string          `json:"cf_web_file"`
