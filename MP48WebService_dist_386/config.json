@@ -1,0 +1,76 @@
+{
+    "analog_inputs_cmd": "/usr/local/bin/rsl_smm",
+    "analog_inputs_desc_file": "/home/andrea/Documenti/GitDea/test/etcrtu/cf_%d_104_c.conf",
+    "audit_log_dir": "/home/andrea/Documenti/GitDea/test/LogAppMp48",
+    "cf_web_file": "/home/andrea/Documenti/GitDea/test/cfweb/cf_web.txt",
+    "config_extensions": [
+        ".rcd",
+        ".rwb",
+        ".txt",
+        ".zip"
+    ],
+    "config_history_dir": "/home/andrea/Documenti/GitDea/test/config_backups",
+    "encryption_key_path": "/etc/MP48WebService/encryption.key",
+    "current_configuration_dir": "/home/andrea/Documenti/GitDea/test/ConfigMp48",
+    "data_dir": "/home/andrea/Documenti/GitDea/MP48WebService/data",
+    "extension_files_config": [
+        ".conf",
+        ".rwb"
+    ],
+    "info_version_desc_file": "/home/andrea/Documenti/GitDea/test/etccfg/",
+    "log_categories": [
+        {
+            "directories": [
+                "/home/andrea/Documenti/GitDea/test/LogRtu",
+                "/home/andrea/Documenti/GitDea/test/LogRtu/syslog"
+            ],
+            "name": "RTU System"
+        },
+        {
+            "directories": [
+                "/home/andrea/Documenti/GitDea/test/LogAppMp48"
+            ],
+            "name": "Application"
+        }
+    ],
+    "log_extensions": [
+        ".log",
+        ".txt",
+        ".evt",
+        ".trace"
+    ],
+    "mp48_type": "gateway",
+    "network_interfaces_file": "/home/andrea/Documenti/GitDea/test/etcnetwork/interfaces",
+    "password_expiry_days": 180,
+    "points_cmd": "/usr/local/bin/rsl_smm -p",
+    "port": "8080",
+    "portssl": "8433",
+    "protected_users": [
+        "admin",
+        "root"
+    ],
+    "remote_interfaces_pattern": "/home/andrea/Documenti/GitDea/test/etcnetwork/interfaces_%d",
+    "remote_machines": [
+        {
+            "ftp": {
+                "passive": true,
+                "port": 21,
+                "remote_dir": "/"
+            },
+            "id": "cpu2",
+            "name": "CPU secondaria",
+            "telnet": {
+                "port": 23,
+                "reboot_command": "sudo reboot",
+                "timeout_seconds": 10
+            }
+        }
+    ],
+    "session_absolute_hours": 4,
+    "session_inactivity_minutes": 30,
+    "session_max_age_seconds": 144400,
+    "session_secret": "cambia-questa-chiave-segreta-con-almeno-32-caratteri",
+    "tls_cert_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2.pem",
+    "tls_key_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2-key.pem",
+    "upload_dir": "./uploads"
+}
