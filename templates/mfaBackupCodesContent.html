@@ -1,0 +1,15 @@
+{{define "mfaBackupCodesContent"}}
+<h1>✅ MFA attivato con successo</h1>
+<div class="card-modern">
+    <div class="card-header">Codici di backup</div>
+    <div class="card-body">
+        <p>Conserva questi codici in un luogo sicuro. Se perdi l'accesso al tuo Google Authenticator, potrai usarli una volta sola.</p>
+        <ul>
+            {{range .BackupCodes}}
+                <li><code>{{.}}</code></li>
+            {{end}}
+        </ul>
+        <a href="/profile/mfa" class="button">Torna al profilo</a>
+    </div>
+</div>
+{{end}}

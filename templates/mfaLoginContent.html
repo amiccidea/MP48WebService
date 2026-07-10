@@ -1,0 +1,21 @@
+{{define "mfaLoginContent"}}
+<h1>🔑 Verifica a due fattori</h1>
+<div class="card-modern">
+    <div class="card-header">Inserisci il codice da Google Authenticator</div>
+    <div class="card-body">
+        <p>Per completare l'accesso, inserisci il codice a 6 cifre generato dal tuo Google Authenticator.</p>
+        {{if .Error}}
+            <div class="message-error">❌ {{.Error}}</div>
+        {{end}}
+        <form method="POST" action="/api/mfa-login-verify">
+            {{ .CSRFField }}
+            <div style="margin:1rem 0;">
+                <label for="code">Codice a 6 cifre</label>
+                <input type="text" name="code" id="code" pattern="[0-9]{6}" maxlength="6" required autofocus>
+            </div>
+            <button type="submit" class="button">Verifica</button>
+        </form>
+        <p style="margin-top:1rem;"><a href="/login">Torna al login</a></p>
+    </div>
+</div>
+{{end}}

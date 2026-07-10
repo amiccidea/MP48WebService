@@ -52,10 +52,8 @@ func init() {
 	}
 	os.MkdirAll(currentDataDir, 0700)
 
-	// ---------- PATCH: chiave crittografia da percorso esterno ----------
 	keyPath := config.EncryptionKeyPath
 	if keyPath == "" {
-		// Fallback alla vecchia posizione se non configurato
 		keyPath = filepath.Join(currentDataDir, "encryption.key")
 	}
 	var err error
@@ -63,7 +61,6 @@ func init() {
 	if err != nil {
 		log.Fatal("Errore chiave crittografia:", err)
 	}
-	// --------------------------------------------------------------------
 
 	if err := loadUsers(currentDataDir); err != nil {
 		log.Printf("Errore caricamento utenti, inizializzo default: %v", err)
@@ -353,7 +350,7 @@ func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// ==================== LOGIN HANDLER (CORRETTO) ====================
+// ==================== LOGIN HANDLER ====================
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		data := map[string]interface{}{
@@ -363,10 +360,10 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		tmpl.ExecuteTemplate(w, "login.html", data)
 		return
 	}
+
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 
-	// LOG DI DEBUG
 	log.Printf("🔍 Login tentativo per %s", username)
 
 	if authenticateLocal(username, password) {
@@ -375,6 +372,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			tmpl.ExecuteTemplate(w, "login.html", map[string]string{"error": "Credenziali non valide"})
 			return
 		}
+
+		// ✅ PRIORITÀ 1: Password scaduta o cambio forzato
 		if u.MustChangePwd || isPasswordExpired(u) {
 			session, _ := store.Get(r, "portal-session")
 			session.Values["pending_user"] = username
@@ -383,7 +382,19 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Sessione (senza rigenerazione per ora)
+		// ✅ PRIORITÀ 2: MFA (solo se la password è valida)
+		if u.TOTPEnabled {
+			session, _ := store.Get(r, "portal-session")
+			session.Values["mfa_pending_user"] = username
+			session.Values["mfa_pending_authenticated"] = false
+			session.Save(r, w)
+
+			// Reindirizza alla pagina standalone di verifica MFA
+			http.Redirect(w, r, "/mfa-login", http.StatusFound)
+			return
+		}
+
+		// ✅ PRIORITÀ 3: Login completo (senza MFA)
 		session, _ := store.Get(r, "portal-session")
 		session.Values["authenticated"] = true
 		session.Values["username"] = username
@@ -399,6 +410,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Login fallito
 	u := getUserByUsername(username)
 	if u != nil && !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
 		tmpl.ExecuteTemplate(w, "login.html", map[string]string{
@@ -503,11 +515,27 @@ func changePasswordPost(w http.ResponseWriter, r *http.Request) {
 	}(username)
 
 	delete(session.Values, "pending_user")
+
+	// ═══════════════════════════════════════════════════════
+	// 🔥 Se l'utente ha MFA attivo, reindirizza alla verifica
+	// ═══════════════════════════════════════════════════════
+	if u != nil && u.TOTPEnabled {
+		session.Values["mfa_pending_user"] = username
+		session.Values["mfa_pending_authenticated"] = false
+		session.Save(r, w)
+		http.Redirect(w, r, "/mfa-login", http.StatusFound)
+		return
+	}
+
+	// Se MFA non è attivo, autentica normalmente
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
 	session.Values["is_admin"] = (u.Role == RoleAdmin)
-	session.Values["last_activity"] = time.Now().Unix()
+	now := time.Now().Unix()
+	session.Values["last_activity"] = now
+	session.Values["created_at"] = now
 	session.Save(r, w)
+
 	http.Redirect(w, r, "/alarms", http.StatusFound)
 }
 

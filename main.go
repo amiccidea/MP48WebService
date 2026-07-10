@@ -125,6 +125,21 @@ func main() {
 	http.HandleFunc("/api/sync-events", authMiddleware(adminMiddleware(syncEventsHandler)))
 	http.HandleFunc("/api/sync-audit-log", authMiddleware(adminMiddleware(SyncAuditLogNowHandler)))
 
+	// MFA
+	// MFA Login (pagina standalone)
+	http.HandleFunc("/mfa-login", mfaLoginPageHandler)
+	http.HandleFunc("/profile/mfa", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			mfaPageHandler(w, r)
+		} else if r.Method == http.MethodPost {
+			mfaEnableHandler(w, r)
+		} else {
+			http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
+		}
+	}))
+	http.HandleFunc("/api/mfa/disable", authMiddleware(mfaDisableHandler))
+	http.HandleFunc("/api/mfa-login-verify", mfaLoginVerifyHandler)
+
 	// Redirect home
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/alarms", http.StatusFound)
