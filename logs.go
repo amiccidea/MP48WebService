@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -64,7 +63,7 @@ func scanAllLogs() ([]LogFileInfo, error) {
 		}
 	}
 
-	// 🔄 Aggiungi sempre l'audit log directory (se configurata)
+	// Aggiungi sempre l'audit log directory (se configurata)
 	if config.AuditLogDir != "" {
 		alreadyIncluded := false
 		for _, cat := range config.LogCategories {
@@ -94,18 +93,14 @@ func scanAllLogs() ([]LogFileInfo, error) {
 func scanDirectory(dirPath, category string) ([]LogFileInfo, error) {
 	var logs []LogFileInfo
 	cleanPath := filepath.Clean(dirPath)
-	err := filepath.WalkDir(cleanPath, func(path string, d fs.DirEntry, err error) error {
+	err := filepath.Walk(cleanPath, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return nil
 		}
-		if !d.IsDir() && isValidLogFile(d.Name()) {
-			info, err := d.Info()
-			if err != nil {
-				return nil
-			}
+		if !info.IsDir() && isValidLogFile(info.Name()) {
 			logs = append(logs, LogFileInfo{
 				Path:        path,
-				Name:        d.Name(),
+				Name:        info.Name(),
 				Size:        formatFileSize(info.Size()),
 				ModTime:     info.ModTime().Format("2006-01-02 15:04:05"),
 				ModTimeUnix: info.ModTime().Unix(),
@@ -188,7 +183,7 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 		allLogs = filtered
 	}
 
-	// 🔽 ORDINA PER DATA DECRESCENTE (dal più recente al più vecchio)
+	// Ordina per data decrescente (dal più recente al più vecchio)
 	sort.Slice(allLogs, func(i, j int) bool {
 		return allLogs[i].ModTimeUnix > allLogs[j].ModTimeUnix
 	})

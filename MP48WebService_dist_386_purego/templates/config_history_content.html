@@ -1,0 +1,129 @@
+{{define "configHistoryContent"}}
+<h1>📜 Storico configurazioni</h1>
+
+<div class="card-modern" style="margin-bottom: 1.5rem;">
+    <div class="card-header">Filtra per data di modifica (backup)</div>
+    <div class="card-body">
+        <form method="GET" action="/config-history" style="display: flex; gap: 1rem; flex-wrap: wrap; align-items: flex-end;">
+            <div>
+                <label for="start_date">Dal</label>
+                <input type="date" id="start_date" name="start_date" value="{{.StartDate}}">
+            </div>
+            <div>
+                <label for="end_date">Al</label>
+                <input type="date" id="end_date" name="end_date" value="{{.EndDate}}">
+            </div>
+            <div>
+                <button type="submit">Cerca</button>
+                <a href="/config-history" class="button" style="background: #6c757d;">Reset</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- Configurazione corrente (elenco di tutti i file) -->
+<div class="card-modern" style="margin-bottom: 1.5rem;">
+    <div class="card-header">📄 Configurazione corrente</div>
+    <div class="card-body">
+        {{if .CurrentFiles}}
+        <table style="width:100%; table-layout: fixed;">
+            <colgroup>
+                <col style="width: 40%;">
+                <col style="width: 25%;">
+                <col style="width: 15%;">
+                <col style="width: 20%;">
+            </colgroup>
+            <thead>
+                <tr><th>Nome file</th><th>Data modifica</th><th>Dimensione</th><th>Azioni</th></tr>
+            </thead>
+            <tbody>
+                {{range .CurrentFiles}}
+                <tr>
+                    <td>{{.Name}}</td>
+                    <td>{{.ModTime}}</td>
+                    <td>{{.Size}}</td>
+                    <td><a href="/config-current/download?path={{.Path}}">📥 Scarica</a></td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p>Nessun file presente nella directory di configurazione corrente.</p>
+        {{end}}
+    </div>
+</div>
+
+<!-- Backup disponibili (archivi compressi) -->
+<div class="card-modern">
+    <div class="card-header">Backup disponibili ({{len .Backups}})</div>
+    <div class="card-body">
+        {{if .Backups}}
+        <table style="width:100%; table-layout: fixed;">
+            <colgroup>
+                <col style="width: 40%;">
+                <col style="width: 25%;">
+                <col style="width: 15%;">
+                <col style="width: 20%;">
+            </colgroup>
+            <thead>
+                <tr><th>Nome file</th><th>Data modifica</th><th>Dimensione</th><th>Azioni</th></tr>
+            </thead>
+            <tbody>
+                {{range .Backups}}
+                <tr>
+                    <td>{{.Name}}</td>
+                    <td>{{.ModTime}}</td>
+                    <td>{{.Size}}</td>
+                    <td>
+                        <a href="/config-history/download/{{.Name}}">📥 Scarica</a>
+                        {{if $.IsAdmin}}
+                        | <a href="#" onclick="confirmDelete('{{.Name}}')" style="color:#dc3545;">🗑️ Elimina</a>
+                        | <a href="#" onclick="confirmRestore('{{.Name}}')" style="color:#28a745;">🔄 Ripristina</a>
+                        {{end}}
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+        {{else}}
+        <p>Nessun backup trovato.</p>
+        {{end}}
+    </div>
+</div>
+
+<script>
+function getCSRFToken() {
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    return meta ? meta.getAttribute('content') : '';
+}
+
+function confirmDelete(filename) {
+    if (confirm('Sei sicuro di voler eliminare il backup ' + filename + '?')) {
+        fetch('/config-history/delete/' + encodeURIComponent(filename), {
+            method: 'DELETE', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() } 
+        }).then(response => {
+            if (response.ok) {
+                window.location.reload();
+            } else {
+                alert('Errore durante l\'eliminazione');
+            }
+        }).catch(err => alert('Errore di rete'));
+    }
+}
+
+function confirmRestore(filename) {
+    if (confirm('⚠️ Attenzione: ripristinare questo backup sovrascriverà l\'intera configurazione corrente. Verrà creato un backup automatico dello stato attuale. Procedere?')) {
+        fetch('/config-history/restore/' + encodeURIComponent(filename), {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() }
+        }).then(response => {
+            if (response.ok) {
+                alert('Configurazione ripristinata con successo. Pagina verrà ricaricata.');
+                window.location.reload();
+            } else {
+                alert('Errore durante il ripristino');
+            }
+        }).catch(err => alert('Errore di rete'));
+    }
+}
+</script>
+{{end}}

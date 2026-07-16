@@ -1,16 +1,13 @@
-# github.com/gorilla/csrf v1.7.3
-## explicit; go 1.20
+# github.com/gorilla/csrf v1.7.1
 github.com/gorilla/csrf
 # github.com/gorilla/securecookie v1.1.2
-## explicit; go 1.20
 github.com/gorilla/securecookie
-# github.com/gorilla/sessions v1.4.0
-## explicit; go 1.23
+# github.com/gorilla/sessions v1.2.1
 github.com/gorilla/sessions
-# github.com/jlaffaye/ftp v0.2.1
-## explicit; go 1.26
+# github.com/jlaffaye/ftp v0.0.0-20190126081051-8019e6774408
 github.com/jlaffaye/ftp
-# golang.org/x/crypto v0.52.0
-## explicit; go 1.25.0
+# github.com/pkg/errors v0.9.1
+github.com/pkg/errors
+# golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blowfish

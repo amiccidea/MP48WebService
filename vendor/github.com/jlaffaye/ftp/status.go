@@ -1,7 +1,5 @@
 package ftp
 
-import "fmt"
-
 // FTP status codes, defined in RFC 959
 const (
 	StatusInitiating    = 100
@@ -27,7 +25,6 @@ const (
 	StatusLoggedIn              = 230
 	StatusLoggedOut             = 231
 	StatusLogoutAck             = 232
-	StatusAuthOK                = 234
 	StatusRequestedFileActionOK = 250
 	StatusPathCreated           = 257
 
@@ -76,7 +73,6 @@ var statusText = map[int]string{
 	StatusLoggedIn:              "User logged in, proceed.",
 	StatusLoggedOut:             "User logged out; service terminated.",
 	StatusLogoutAck:             "Logout command noted, will complete when transfer done.",
-	StatusAuthOK:                "AUTH command OK",
 	StatusRequestedFileActionOK: "Requested file action okay, completed.",
 	StatusPathCreated:           "Path created.",
 
@@ -111,9 +107,5 @@ var statusText = map[int]string{
 
 // StatusText returns a text for the FTP status code. It returns the empty string if the code is unknown.
 func StatusText(code int) string {
-	str, ok := statusText[code]
-	if !ok {
-		str = fmt.Sprintf("Unknown status code: %d", code)
-	}
-	return str
+	return statusText[code]
 }

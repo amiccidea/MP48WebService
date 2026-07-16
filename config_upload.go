@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -131,7 +132,8 @@ func configUploadHandler(w http.ResponseWriter, r *http.Request) {
 	default:
 		suffix = "*.tmp"
 	}
-	tempFile, err := os.CreateTemp("", "upload_"+suffix)
+	// ✅ Sostituito os.CreateTemp con ioutil.TempFile (Go 1.15)
+	tempFile, err := ioutil.TempFile("", "upload_"+suffix)
 	if err != nil {
 		log.Printf("Errore salvataggio temporaneo: %v", err)
 		http.Redirect(w, r, "/config-upload?err=Errore salvataggio temporaneo", http.StatusFound)

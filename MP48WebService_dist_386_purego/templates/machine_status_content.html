@@ -1,0 +1,153 @@
+{{define "machineStatusContent"}}
+<h1>🖥️ Info CPUs</h1>
+
+<!-- Macchina locale -->
+<div class="card-modern">
+    <div class="card-header">🖥️ Macchina principale</div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem;">
+            <div>
+                <strong>Stato:</strong> 🟢 Operativa
+            </div>
+            <div>
+                <strong>Uptime:</strong> {{index .LocalInfo "Uptime"}}
+            </div>
+            <div>
+                <strong>Carico:</strong> {{index .LocalInfo "Load1"}} / {{index .LocalInfo "Load5"}} / {{index .LocalInfo "Load15"}}
+            </div>
+            <div>
+                <strong>RAM:</strong> {{index .LocalInfo "MemAvailable"}} / {{index .LocalInfo "MemTotal"}}
+            </div>
+            <div>
+                <strong>Disco:</strong> {{index .LocalInfo "DiskUsed"}} / {{index .LocalInfo "DiskTotal"}}
+            </div>
+            <div>
+                <strong>Swap:</strong> {{index .LocalInfo "SwapFree"}} / {{index .LocalInfo "SwapTotal"}}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Macchine remote -->
+{{if .RemoteInfos}}
+<div class="card-modern" style="margin-top: 1rem;">
+    <div class="card-header">🔄 Macchine remote</div>
+    <div class="card-body">
+        {{range .RemoteInfos}}
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; padding: 0.5rem 0; border-bottom: 1px solid #eee;">
+            <div>
+                <strong>{{.MachineName}}</strong><br>
+                <small style="color: #6c757d;">{{.Host}}</small>
+            </div>
+            <div>
+                <strong>Stato:</strong> 
+                {{if eq .Status "online"}}
+                🟢 {{.Status}}
+                {{else}}
+                🔴 offline
+                {{end}}
+                {{if .Error}}
+                <br><span style="color: #c00; font-size: 0.8rem;">{{.Error}}</span>
+                {{end}}
+            </div>
+            {{if eq .Status "online"}}
+            <div>
+                <strong>Uptime:</strong> {{.Uptime}}
+            </div>
+            <div>
+                <strong>Carico:</strong> {{.CPU}}
+            </div>
+            <div>
+                <strong>RAM:</strong> {{.MemUsed}} / {{.MemTotal}} (libera {{.MemFree}})
+            </div>
+            <div>
+                <strong>Disco (/):</strong> {{.DiskUsed}} / {{.DiskTotal}} (libero {{.DiskFree}})
+            </div>
+            {{end}}
+        </div>
+        {{end}}
+    </div>
+</div>
+{{end}}
+
+<!-- Info macchina (info.txt, version.txt) -->
+{{if .MachineInfo}}
+<div class="card-modern" style="margin-top: 1rem;">
+    <div class="card-header">📋 Informazioni sistema</div>
+    <div class="card-body">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1rem;">
+            <div>
+                <h3 style="margin-bottom: 0.5rem;">Configurazione</h3>
+                <ul class="info-list">
+                    <li><strong>Device Type:</strong> {{.MachineInfo.DeviceType}}</li>
+                    <li><strong>MP48 Number:</strong> {{.MachineInfo.MP48Number}}</li>
+                    <li><strong>Config Name:</strong> {{.MachineInfo.ConfigName}}</li>
+                    <li><strong>Config Date:</strong> {{.MachineInfo.ConfigDate}}</li>
+                    <li><strong>Configurator Ver:</strong> {{.MachineInfo.ConfiguratorVer}}</li>
+                    <li><strong>Operator:</strong> {{.MachineInfo.Operator}}</li>
+                </ul>
+            </div>
+            <div>
+                <h3 style="margin-bottom: 0.5rem;">Versioni firmware</h3>
+                <ul class="info-list">
+                    {{range $key, $val := .MachineInfo.Firmware}}
+                    <li><strong>{{$key}}:</strong> {{$val}}</li>
+                    {{end}}
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{{end}}
+
+<!-- Interfacce di rete per tutte le CPU -->
+<div class="card-modern" style="margin-top: 1rem;">
+    <div class="card-header">🌐 Configurazione interfacce di rete</div>
+    <div class="card-body">
+        {{if .CPUInterfaces}}
+            {{range .CPUInterfaces}}
+            <div style="margin-bottom: 1.5rem;">
+                <h3 style="display: flex; align-items: center; gap: 0.5rem;">
+                    CPU {{.CPU}}
+                    {{if .IsLocal}}
+                    <span style="background: #28a745; color: white; padding: 2px 10px; border-radius: 12px; font-size: 0.7rem;">🖥️ Locale</span>
+                    {{end}}
+                </h3>
+                {{if .Interfaces}}
+                <table style="width:100%; table-layout: fixed; border-collapse: collapse;">
+                    <colgroup>
+                        <col style="width: 15%;">
+                        <col style="width: 30%;">
+                        <col style="width: 25%;">
+                        <col style="width: 30%;">
+                    </colgroup>
+                    <thead>
+                        <tr>
+                            <th>Interfaccia</th>
+                            <th>Indirizzo IP</th>
+                            <th>Netmask</th>
+                            <th>Gateway</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{range .Interfaces}}
+                        <tr>
+                            <td>{{.Name}}</td>
+                            <td>{{if .Address}}{{.Address}}{{else}}❌ non configurato{{end}}</td>
+                            <td>{{if .Netmask}}{{.Netmask}}{{else}}—{{end}}</td>
+                            <td>{{if .Gateway}}{{.Gateway}}{{else}}—{{end}}</td>
+                        </tr>
+                        {{end}}
+                    </tbody>
+                </table>
+                {{else}}
+                <p style="color: #6c757d;">Nessuna interfaccia di rete configurata per questa CPU.</p>
+                {{end}}
+            </div>
+            {{end}}
+        {{else}}
+        <p>Nessuna interfaccia di rete configurata o file non trovato.</p>
+        {{end}}
+    </div>
+</div>
+{{end}}

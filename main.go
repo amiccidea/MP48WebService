@@ -1,9 +1,9 @@
 package main
 
 import (
-	"io/fs"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -22,11 +22,19 @@ func isMultiCPU() bool {
 
 func main() {
 	// Serve file statici
-	staticSub, err := fs.Sub(staticFS, "static")
-	if err != nil {
-		log.Fatal("Errore nel servire file statici:", err)
+	//	staticSub, err := fs.Sub(staticFS, "static")
+	//	if err != nil {
+	//		log.Fatal("Errore nel servire file statici:", err)
+	//	}
+	//	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
+
+	// --- Caricamento file statici ---
+	staticDir := "static"
+	if _, err := os.Stat(staticDir); err == nil {
+		http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
+	} else {
+		log.Fatal("Directory static non trovata!")
 	}
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
 
 	// ---------- RATE LIMITER ----------
 	// 5 tentativi al minuto per login

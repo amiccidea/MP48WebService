@@ -26,7 +26,7 @@ func FTPUploadFile(machine RemoteMachine, localPath, remotePath string) error {
 	}
 	addr := fmt.Sprintf("%s:%d", machine.Host, port)
 
-	conn, err := ftp.Dial(addr, ftp.DialWithTimeout(30*time.Second))
+	conn, err := ftp.Dial(addr)
 	if err != nil {
 		return err
 	}
@@ -157,7 +157,7 @@ func FTPUploadDirectory(machine RemoteMachine, localDir, remoteDir string) error
 	}
 	addr := fmt.Sprintf("%s:%d", machine.Host, port)
 
-	conn, err := ftp.Dial(addr, ftp.DialWithTimeout(30*time.Second))
+	conn, err := ftp.Dial(addr)
 	if err != nil {
 		return err
 	}
@@ -230,26 +230,26 @@ func SyncFileToAllRemotes(localPath string) error {
 			continue
 		}
 		if machine.FTP.Username == "" || machine.FTP.Password == "" {
-			log.Printf("⚠️ Credenziali FTP mancanti per %s, salto...", machine.Name)
+			fmt.Printf("⚠️ Credenziali FTP mancanti per %s, salto...", machine.Name)
 			continue
 		}
 		remotePath := buildRemotePath(localPath, machine.FTP.Username)
-		log.Printf("📤 Caricamento %s su %s (%s) -> %s", localPath, machine.Name, machine.Host, remotePath)
+		fmt.Printf("📤 Caricamento %s su %s (%s) -> %s", localPath, machine.Name, machine.Host, remotePath)
 		var err error
 		for attempt := 1; attempt <= 3; attempt++ {
 			err = FTPUploadFile(machine, localPath, remotePath)
 			if err == nil {
 				break
 			}
-			log.Printf("⚠️ Tentativo %d/3 fallito per %s: %v, riprovo...", attempt, machine.Name, err)
+			fmt.Printf("⚠️ Tentativo %d/3 fallito per %s: %v, riprovo...", attempt, machine.Name, err)
 			time.Sleep(2 * time.Second)
 		}
 		if err != nil {
-			log.Printf("❌ Errore upload su %s dopo 3 tentativi: %v", machine.Name, err)
+			fmt.Printf("❌ Errore upload su %s dopo 3 tentativi: %v", machine.Name, err)
 			lastErr = err
 			continue
 		}
-		log.Printf("✅ File caricato su %s", machine.Name)
+		fmt.Printf("✅ File caricato su %s", machine.Name)
 	}
 	return lastErr
 }
@@ -262,26 +262,26 @@ func SyncDirToAllRemotes(localDir string) error {
 			continue
 		}
 		if machine.FTP.Username == "" || machine.FTP.Password == "" {
-			log.Printf("⚠️ Credenziali FTP mancanti per %s, salto...", machine.Name)
+			fmt.Printf("⚠️ Credenziali FTP mancanti per %s, salto...", machine.Name)
 			continue
 		}
 		remoteDir := buildRemotePath(localDir, machine.FTP.Username)
-		log.Printf("📤 Caricamento directory %s su %s (%s) -> %s", localDir, machine.Name, machine.Host, remoteDir)
+		fmt.Printf("📤 Caricamento directory %s su %s (%s) -> %s", localDir, machine.Name, machine.Host, remoteDir)
 		var err error
 		for attempt := 1; attempt <= 3; attempt++ {
 			err = FTPUploadDirectory(machine, localDir, remoteDir)
 			if err == nil {
 				break
 			}
-			log.Printf("⚠️ Tentativo %d/3 fallito per %s: %v, riprovo...", attempt, machine.Name, err)
+			fmt.Printf("⚠️ Tentativo %d/3 fallito per %s: %v, riprovo...", attempt, machine.Name, err)
 			time.Sleep(3 * time.Second)
 		}
 		if err != nil {
-			log.Printf("❌ Errore upload directory su %s dopo 3 tentativi: %v", machine.Name, err)
+			fmt.Printf("❌ Errore upload directory su %s dopo 3 tentativi: %v", machine.Name, err)
 			lastErr = err
 			continue
 		}
-		log.Printf("✅ Directory caricata su %s", machine.Name)
+		fmt.Printf("✅ Directory caricata su %s", machine.Name)
 	}
 	return lastErr
 }
@@ -301,7 +301,7 @@ func FTPDeleteFile(machine RemoteMachine, remotePath string) error {
 	}
 	addr := fmt.Sprintf("%s:%d", machine.Host, port)
 
-	conn, err := ftp.Dial(addr, ftp.DialWithTimeout(30*time.Second))
+	conn, err := ftp.Dial(addr)
 	if err != nil {
 		return err
 	}

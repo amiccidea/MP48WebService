@@ -1,0 +1,177 @@
+{{define "adminRolesContent"}}
+<h1>Gestione Ruoli</h1>
+
+<div style="margin-bottom: 1rem;">
+    <button id="btnNewRole" style="background: #28a745; padding: 6px 12px;">+ Nuovo ruolo</button>
+</div>
+
+<div class="card-modern">
+    <div class="card-header">Elenco ruoli e permessi</div>
+    <div class="card-body">
+        <div id="rolesTable" style="overflow-x: auto;"></div>
+    </div>
+</div>
+
+<!-- Modale -->
+<div id="roleModal" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:1000; align-items:center; justify-content:center;">
+    <div style="background:#fff; width:500px; max-width:90%; border-radius:8px;">
+        <div style="padding:1rem; border-bottom:1px solid #ddd;">
+            <h3 id="modalTitle" style="margin:0;">Nuovo ruolo</h3>
+        </div>
+        <div style="padding:1rem;">
+            <input type="hidden" id="roleId">
+            <label for="roleName">Nome ruolo</label>
+            <input type="text" id="roleName" required style="width:100%; margin-bottom:1rem;">
+            <fieldset>
+                <legend>Permessi</legend>
+                <div id="permsContainer" style="display:grid; grid-template-columns:repeat(2,1fr); gap:0.5rem;"></div>
+            </fieldset>
+            <div style="margin-top:1rem; text-align:right;">
+                <button type="button" id="cancelModal">Annulla</button>
+                <button type="button" id="saveRole">Salva</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const rolesData = JSON.parse(`{{.RolesJSON}}`);
+    const allPermissions = [
+        "alarms", "logs", "machine_status", "config_history",
+        "config_upload", "analog_inputs", "admin_users", "admin_roles", "admin_settings"
+    ];
+    const permissionLabels = {
+        "alarms": "Alarms",
+        "logs": "Scarica log",
+        "machine_status": "Stato macchina",
+        "config_history": "Storico configurazioni",
+        "config_upload": "Carica impostazioni",
+        "analog_inputs": "Analog inputs",
+        "admin_users": "Gestione utenti",
+        "admin_roles": "Gestione ruoli",
+        "admin_settings": "Impostazioni sistema"
+    };
+
+    let currentRoleId = null;
+
+    function renderTable() {
+        let html = `<div style="overflow-x: auto;">
+            <table style="width:100%; border-collapse: collapse; table-layout: fixed;">
+                <thead>
+                    <tr>
+                        <th style="width:10%">Ruolo</th>
+                        <th style="width:5%">Alarms</th>
+                        <th style="width:5%">Log</th>
+                        <th style="width:8%">Macchina</th>
+                        <th style="width:10%">Analog inputs</th>
+                        <th style="width:10%">Storico conf</th>
+                        <th style="width:10%">Carica conf</th>
+                        <th style="width:12%">Gestione utenti</th>
+                        <th style="width:12%">Gestione ruoli</th>
+                        <th style="width:10%">Impostazioni</th>
+                        <th style="width:8%">Azioni</th>
+                    </tr>
+                </thead>
+                <tbody>`;
+        for (let role of rolesData) {
+            html += `<tr>
+                <td>${role.name} ${(role.id === 'admin' || role.id === 'user' || role.id === 'tech') ? '(predefinito)' : ''}</td>
+                <td style="text-align:center">${role.permissions.alarms ? '✅' : '❌'}</td>
+                <td style="text-align:center">${role.permissions.logs ? '✅' : '❌'}</td>
+                <td style="text-align:center">${role.permissions.machine_status ? '✅' : '❌'}</td>
+                <td style="text-align:center">${role.permissions.analog_inputs ? '✅' : '❌'}</td>
+                <td style="text-align:center">${role.permissions.config_history ? '✅' : '❌'}</td>
+                <td style="text-align:center">${role.permissions.config_upload ? '✅' : '❌'}</td>
+                <td style="text-align:center">${role.permissions.admin_users ? '✅' : '❌'}</td>
+                <td style="text-align:center">${role.permissions.admin_roles ? '✅' : '❌'}</td>
+                <td style="text-align:center">${role.permissions.admin_settings ? '✅' : '❌'}</td>
+                <td>`;
+            if (role.id !== 'admin' && role.id !== 'user' && role.id !== 'tech') {
+                html += `<button class="editBtn" data-id="${role.id}" data-name="${role.name}" data-perms='${JSON.stringify(role.permissions)}' style="background:#0070c0;">✏️</button> `;
+                html += `<button class="deleteBtn" data-id="${role.id}" style="background:#dc3545;">🗑️</button>`;
+            } else {
+                html += '—';
+            }
+            html += `</td></tr>`;
+        }
+        html += `</tbody></table></div>`;
+        document.getElementById('rolesTable').innerHTML = html;
+        attachButtons();
+    }
+
+    function attachButtons() {
+        document.querySelectorAll('.editBtn').forEach(btn => {
+            btn.onclick = () => {
+                currentRoleId = btn.dataset.id;
+                document.getElementById('roleName').value = btn.dataset.name;
+                let perms = {};
+                try {
+                    const permsStr = btn.getAttribute('data-perms');
+                    if (permsStr && permsStr !== '') {
+                        perms = JSON.parse(permsStr);
+                    }
+                } catch(e) {
+                    console.error('Errore parsing permessi:', e);
+                }
+                document.querySelectorAll('.perm-check').forEach(cb => {
+                    cb.checked = perms[cb.dataset.perm] === true;
+                });
+                document.getElementById('modalTitle').innerText = 'Modifica ruolo';
+                document.getElementById('roleModal').style.display = 'flex';
+            };
+        });
+        document.querySelectorAll('.deleteBtn').forEach(btn => {
+            btn.onclick = () => {
+                if (confirm('Eliminare ruolo?')) {
+                    window.location.href = '/admin/roles/delete?id=' + btn.dataset.id;
+                }
+            };
+        });
+    }
+
+    function getCSRFToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
+    }
+
+    function createPermCheckboxes() {
+        let container = document.getElementById('permsContainer');
+        container.innerHTML = '';
+        for (let perm of allPermissions) {
+            let label = document.createElement('label');
+            label.innerHTML = `<input type="checkbox" class="perm-check" data-perm="${perm}"> ${permissionLabels[perm]}`;
+            container.appendChild(label);
+        }
+    }
+
+    document.getElementById('btnNewRole').onclick = () => {
+        currentRoleId = '';
+        document.getElementById('roleName').value = '';
+        document.querySelectorAll('.perm-check').forEach(cb => cb.checked = false);
+        document.getElementById('modalTitle').innerText = 'Nuovo ruolo';
+        document.getElementById('roleModal').style.display = 'flex';
+    };
+    document.getElementById('cancelModal').onclick = () => {
+        document.getElementById('roleModal').style.display = 'none';
+    };
+    document.getElementById('saveRole').onclick = async () => {
+        const name = document.getElementById('roleName').value.trim();
+        if (!name) { alert('Inserisci nome'); return; }
+        const perms = {};
+        document.querySelectorAll('.perm-check').forEach(cb => {
+            perms[cb.dataset.perm] = cb.checked;
+        });
+        const formData = new URLSearchParams();
+        formData.append('id', currentRoleId);
+        formData.append('name', name);
+        for (let p in perms) {
+            formData.append(p, perms[p] ? 'on' : 'off');
+        }
+        const resp = await fetch('/admin/roles/update', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-CSRF-Token': getCSRFToken() }, body: formData });
+        if (resp.ok) window.location.reload();
+        else alert('Errore salvataggio');
+    };
+    createPermCheckboxes();
+    renderTable();
+</script>
+{{end}}

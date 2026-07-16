@@ -44,8 +44,13 @@ func init() {
 			return string(b)
 		},
 	}
-	tmpl = template.Must(template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/*.html"))
-
+	//tmpl = template.Must(template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/*.html"))
+	// --- Caricamento template ---
+	tmpl = template.New("").Funcs(funcMap)
+	_, err := tmpl.ParseGlob("templates/*.html")
+	if err != nil {
+		log.Fatal("Errore caricamento template:", err)
+	}
 	currentDataDir = config.DataDir
 	if currentDataDir == "" {
 		currentDataDir = "./data"
@@ -58,21 +63,22 @@ func init() {
 		// Fallback alla vecchia posizione se non configurato
 		keyPath = filepath.Join(currentDataDir, "encryption.key")
 	}
-	var err error
+	//var err error
 	encryptionKey, err = loadOrGenerateKey(keyPath)
 	if err != nil {
 		log.Fatal("Errore chiave crittografia:", err)
 	}
 	// --------------------------------------------------------------------
-
-	if err := loadUsers(currentDataDir); err != nil {
+	err = loadUsers(currentDataDir)
+	if err != nil {
 		log.Printf("Errore caricamento utenti, inizializzo default: %v", err)
 		userMutex.Lock()
 		initDefaultUsers()
 		saveUsers(currentDataDir)
 		userMutex.Unlock()
 	}
-	if err := loadRoles(currentDataDir); err != nil {
+	err = loadRoles(currentDataDir)
+	if err != nil {
 		log.Printf("Errore caricamento ruoli, uso default: %v", err)
 		saveRoles(currentDataDir)
 	}
@@ -169,40 +175,51 @@ func authenticateLocal(username, password string) bool {
 	userMutex.Lock()
 	defer userMutex.Unlock()
 
+	log.Printf("🔍 Tentativo autenticazione per %s", username)
+
 	u := getUserByUsername(username)
 	if u == nil {
-		log.Printf("Tentativo di accesso per utente inesistente: %s", username)
+		log.Printf("❌ Utente %s non trovato", username)
 		WriteAuditLog("login_failed", username, "Tentativo di accesso per utente inesistente")
 		return false
 	}
+	log.Printf("👤 Utente %s trovato, enabled=%v, locked=%v", username, u.Enabled, u.LockedUntil)
 
 	if !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
-		log.Printf("Accesso negato per utente bloccato: %s (bloccato fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
+		log.Printf("🔒 Utente %s bloccato fino a %s", username, u.LockedUntil.Format(time.RFC3339))
 		WriteAuditLog("login_failed", username, "Accesso negato per utente bloccato")
 		return false
 	}
 
 	if !u.Enabled {
-		log.Printf("Tentativo di accesso per utente disabilitato: %s", username)
+		log.Printf("🚫 Utente %s disabilitato", username)
 		WriteAuditLog("login_failed", username, "Tentativo di accesso per utente disabilitato")
 		return false
 	}
 
+	// Migrazione password plaintext -> bcrypt
 	ok := false
 	if !strings.HasPrefix(u.PasswordHash, "$2a$") && !strings.HasPrefix(u.PasswordHash, "$2b$") {
 		if u.PasswordHash == password {
+			log.Printf("🔄 Migrazione password plaintext -> bcrypt per %s", username)
 			newHash, err := hashPassword(password)
 			if err == nil {
 				u.PasswordHash = newHash
 				u.PasswordHistory = []string{}
 				u.LastModified = time.Now()
 				ok = true
-				log.Printf("Migrata password di %s a bcrypt", username)
+			} else {
+				log.Printf("❌ Errore hash password per %s: %v", username, err)
 			}
 		}
 	} else {
 		err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
 		ok = err == nil
+		if err != nil {
+			log.Printf("❌ Password errata per %s: %v", username, err)
+		} else {
+			log.Printf("✅ Password corretta per %s", username)
+		}
 	}
 
 	if ok {
@@ -210,18 +227,18 @@ func authenticateLocal(username, password string) bool {
 		u.LockedUntil = time.Time{}
 		saveUsers(currentDataDir)
 		WriteAuditLog("login_success", username, "Login riuscito")
-		log.Printf("Login riuscito per %s", username)
+		log.Printf("✅ Login riuscito per %s", username)
 		return true
 	}
 
 	u.FailedLoginAttempts++
+	log.Printf("❌ Tentativo fallito per %s (%d/5)", username, u.FailedLoginAttempts)
 	WriteAuditLog("login_failed", username, "Tentativo di accesso fallito")
-	log.Printf("Tentativo di accesso fallito per %s (%d/5)", username, u.FailedLoginAttempts)
 
 	if u.FailedLoginAttempts >= 5 {
 		u.LockedUntil = time.Now().Add(15 * time.Minute)
+		log.Printf("🔒 Utente %s bloccato per 15 minuti", username)
 		WriteAuditLog("login_failed", username, "Account bloccato per 15 minuti")
-		log.Printf("Account %s bloccato per 15 minuti (fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
 	}
 	saveUsers(currentDataDir)
 	return false

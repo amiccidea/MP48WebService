@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"html/template"
 	"io"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -408,9 +409,10 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		endUnix = time.Now().Unix()
 	}
 
-	entries, err := os.ReadDir(backupDir)
+	// ✅ Sostituito os.ReadDir con ioutil.ReadDir (Go 1.15)
+	entries, err := ioutil.ReadDir(backupDir)
 	if err != nil {
-		entries = []os.DirEntry{}
+		entries = []os.FileInfo{}
 	}
 	var backups []BackupFileInfo
 	for _, entry := range entries {
@@ -428,11 +430,7 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		if !extOk {
 			continue
 		}
-		info, err := entry.Info()
-		if err != nil {
-			continue
-		}
-		modTime := info.ModTime()
+		modTime := entry.ModTime()
 		modUnix := modTime.Unix()
 		if startUnix > 0 && modUnix < startUnix {
 			continue
@@ -444,7 +442,7 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 			Name:       name,
 			ModTime:    modTime.Format("2006-01-02 15:04:05"),
 			ModTimeRaw: modTime,
-			Size:       formatFileSize(info.Size()),
+			Size:       formatFileSize(entry.Size()),
 		})
 	}
 	sort.Slice(backups, func(i, j int) bool {
@@ -556,7 +554,6 @@ func configCurrentFileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 // Elimina backup
-// Elimina backup
 func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	filename := strings.TrimPrefix(r.URL.Path, "/config-history/delete/")
 	if filename == "" {
@@ -569,13 +566,11 @@ func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	filePath := filepath.Join(config.ConfigHistoryDir, filename)
 
-	// Salva il percorso assoluto per la sincronizzazione remota
 	absFilePath, err := filepath.Abs(filePath)
 	if err != nil {
 		absFilePath = filePath
 	}
 
-	// Elimina il file locale
 	if err := os.Remove(filePath); err != nil {
 		http.Error(w, "Errore eliminazione", http.StatusInternalServerError)
 		return
@@ -584,7 +579,6 @@ func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	username, _ := getUserContext(r)
 	WriteAuditLog("CONFIG_DELETE", username, filename)
 
-	// Sincronizza l'eliminazione sulle macchine remote (in background)
 	go func() {
 		if err := SyncFileDeleteFromAllRemotes(absFilePath); err != nil {
 			log.Printf("❌ Errore sincronizzazione eliminazione backup %s: %v", filename, err)
@@ -622,7 +616,6 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 1. Backup automatico PRIMA del restore
 	backupAutoPath, backupAutoName, err := backupCurrentConfigDir()
 	if err != nil {
 		log.Printf("Errore backup: %v", err)
@@ -631,7 +624,6 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("Backup automatico creato: %s", backupAutoName)
 
-	// 2. Estrai il backup scelto nella directory corrente
 	if err := extractArchive(backupPath, config.CurrentConfigurationDir); err != nil {
 		log.Printf("Errore estrazione: %v", err)
 		http.Error(w, "Errore durante il ripristino", http.StatusInternalServerError)
@@ -640,7 +632,6 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 	username, _ := getUserContext(r)
 	WriteAuditLog("CONFIG_RESTORE", username, fmt.Sprintf("ripristinato backup %s (backup automatico: %s)", filename, backupAutoName))
 
-	// 3. Sincronizza il backup automatico (file ZIP) sulle macchine remote
 	go func() {
 		if err := SyncFileToAllRemotes(backupAutoPath); err != nil {
 			log.Printf("❌ Errore sincronizzazione backup automatico %s: %v", backupAutoName, err)
@@ -649,7 +640,6 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// 4. Sincronizza la configurazione ripristinata sulle macchine remote
 	go func() {
 		if err := SyncDirToAllRemotes(config.CurrentConfigurationDir); err != nil {
 			log.Printf("❌ Errore sincronizzazione configurazione ripristinata: %v", err)

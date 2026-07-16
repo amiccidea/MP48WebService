@@ -4,7 +4,7 @@ package main
 
 import (
 	"fmt"
-	"os"
+	"io/ioutil"
 	"strings"
 	"syscall"
 )
@@ -13,7 +13,7 @@ func getSystemInfo() map[string]string {
 	info := make(map[string]string)
 
 	// Uptime
-	if data, err := os.ReadFile("/proc/uptime"); err == nil {
+	if data, err := ioutil.ReadFile("/proc/uptime"); err == nil {
 		var uptimeSec float64
 		fmt.Sscanf(string(data), "%f", &uptimeSec)
 		days := int(uptimeSec) / 86400
@@ -23,7 +23,7 @@ func getSystemInfo() map[string]string {
 	}
 
 	// Load average
-	if data, err := os.ReadFile("/proc/loadavg"); err == nil {
+	if data, err := ioutil.ReadFile("/proc/loadavg"); err == nil {
 		fields := strings.Fields(string(data))
 		if len(fields) >= 3 {
 			info["Load1"] = fields[0]
@@ -33,7 +33,7 @@ func getSystemInfo() map[string]string {
 	}
 
 	// Memoria
-	if data, err := os.ReadFile("/proc/meminfo"); err == nil {
+	if data, err := ioutil.ReadFile("/proc/meminfo"); err == nil {
 		lines := strings.Split(string(data), "\n")
 		for _, line := range lines {
 			switch {

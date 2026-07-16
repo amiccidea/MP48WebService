@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
@@ -81,7 +82,7 @@ func parsePointLine(tokens []string) (pointType string, mdbIdx int, data map[str
 // getPointsOutput restituisce l'output dei punti (da comando o da file)
 func getPointsOutput() (string, error) {
 	if runtime.GOOS == "windows" {
-		if data, err := os.ReadFile("points.txt"); err == nil {
+		if data, err := ioutil.ReadFile("points.txt"); err == nil {
 			return string(data), nil
 		}
 		return "", nil
@@ -93,7 +94,7 @@ func getPointsOutput() (string, error) {
 	cmd.Stdout = &out
 	if err := cmd.Run(); err != nil {
 		log.Printf("Comando %s fallito: %v, provo points.txt", config.PointsCmd, err)
-		if data, err := os.ReadFile("points.txt"); err == nil {
+		if data, err := ioutil.ReadFile("points.txt"); err == nil {
 			return string(data), nil
 		}
 		return "", err

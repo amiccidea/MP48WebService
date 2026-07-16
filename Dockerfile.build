@@ -1,0 +1,35 @@
+FROM debian:11-slim
+
+# Installa gccgo-10 e strumenti di base
+RUN apt-get update && apt-get install -y \
+    gccgo-10 \
+    git \
+    make \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Installa Go 1.15 solo per gestire il vendor (non per compilare)
+RUN wget https://go.dev/dl/go1.15.15.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.15.15.linux-amd64.tar.gz && \
+    mv /usr/local/go /usr/local/go1.15
+
+ENV PATH=/usr/local/go1.15/bin:$PATH
+
+# Determina il GOROOT corretto per gccgo
+RUN echo 'export GOROOT=$(gccgo-10 -print-libgcc-file-name | sed "s|/lib/gcc/.*||")' >> /root/.bashrc
+
+WORKDIR /build
+COPY . .
+
+# Compila
+RUN go mod vendor && \
+    export GOROOT=$(gccgo-10 -print-libgcc-file-name | sed 's|/lib/gcc/.*||') && \
+    export GCCGO=gccgo-10 && \
+    export GOOS=linux GOARCH=386 CGO_ENABLED=0 && \
+    go build -compiler gccgo \
+        -gccgoflags="-march=i586 -mno-mmx -mno-sse -static -static-libgcc -Wl,-static" \
+        -mod=vendor \
+        -ldflags="-s -w" \
+        -o MP48WebService .
+
+CMD ["./MP48WebService"]

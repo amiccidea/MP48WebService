@@ -24,16 +24,10 @@ var listLineParsers = []parseFunc{
 var dirTimeFormats = []string{
 	"01-02-06  03:04PM",
 	"2006-01-02  15:04",
-	"01-02-2006  03:04PM",
-	"01-02-2006  15:04",
 }
 
 // parseRFC3659ListLine parses the style of directory line defined in RFC 3659.
-func parseRFC3659ListLine(line string, _ time.Time, loc *time.Location) (*Entry, error) {
-	return parseNextRFC3659ListLine(line, loc, &Entry{})
-}
-
-func parseNextRFC3659ListLine(line string, loc *time.Location, e *Entry) (*Entry, error) {
+func parseRFC3659ListLine(line string, now time.Time, loc *time.Location) (*Entry, error) {
 	iSemicolon := strings.Index(line, ";")
 	iWhitespace := strings.Index(line, " ")
 
@@ -41,12 +35,8 @@ func parseNextRFC3659ListLine(line string, loc *time.Location, e *Entry) (*Entry
 		return nil, errUnsupportedListLine
 	}
 
-	name := line[iWhitespace+1:]
-	if e.Name == "" {
-		e.Name = name
-	} else if e.Name != name {
-		// All lines must have the same name
-		return nil, errUnsupportedListLine
+	e := &Entry{
+		Name: line[iWhitespace+1:],
 	}
 
 	for _, field := range strings.Split(line[:iWhitespace-1], ";") {
@@ -73,9 +63,7 @@ func parseNextRFC3659ListLine(line string, loc *time.Location, e *Entry) (*Entry
 				e.Type = EntryTypeFile
 			}
 		case "size":
-			if err := e.setSize(value); err != nil {
-				return nil, err
-			}
+			e.setSize(value)
 		}
 	}
 	return e, nil
@@ -85,10 +73,8 @@ func parseNextRFC3659ListLine(line string, loc *time.Location, e *Entry) (*Entry
 // the UNIX ls command.
 func parseLsListLine(line string, now time.Time, loc *time.Location) (*Entry, error) {
 
-	// Has the first field a length of exactly 10 bytes
-	// - or 10 bytes with an additional '+' character for indicating ACLs?
-	// If not, return.
-	if i := strings.IndexByte(line, ' '); !(i == 10 || (i == 11 && line[10] == '+')) {
+	// Has the first field a length of 10 bytes?
+	if strings.IndexByte(line, ' ') != 10 {
 		return nil, errUnsupportedListLine
 	}
 
@@ -147,12 +133,6 @@ func parseLsListLine(line string, now time.Time, loc *time.Location) (*Entry, er
 		e.Type = EntryTypeFolder
 	case 'l':
 		e.Type = EntryTypeLink
-
-		// Split link name and target
-		if i := strings.Index(e.Name, " -> "); i > 0 {
-			e.Target = e.Name[i+4:]
-			e.Name = e.Name[:i]
-		}
 	default:
 		return nil, errUnknownListEntryType
 	}

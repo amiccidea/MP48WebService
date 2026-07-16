@@ -1,25 +1,26 @@
-//go:build go1.7
 // +build go1.7
 
 package csrf
 
 import (
 	"context"
-	"fmt"
 	"net/http"
+
+	"github.com/pkg/errors"
 )
 
 func contextGet(r *http.Request, key string) (interface{}, error) {
 	val := r.Context().Value(key)
 	if val == nil {
-		return nil, fmt.Errorf("no value exists in the context for key %q", key)
+		return nil, errors.Errorf("no value exists in the context for key %q", key)
 	}
+
 	return val, nil
 }
 
 func contextSave(r *http.Request, key string, val interface{}) *http.Request {
 	ctx := r.Context()
-	ctx = context.WithValue(ctx, key, val) // nolint:staticcheck
+	ctx = context.WithValue(ctx, key, val)
 	return r.WithContext(ctx)
 }
 

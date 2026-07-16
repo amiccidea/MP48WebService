@@ -1,0 +1,30 @@
+FROM debian:8-slim
+
+# Usa i repository archivio di Debian Jessie
+RUN echo "deb http://archive.debian.org/debian jessie main contrib non-free" > /etc/apt/sources.list && \
+    echo "deb http://archive.debian.org/debian jessie-updates main contrib non-free" >> /etc/apt/sources.list && \
+    echo "deb http://archive.debian.org/debian-security jessie/updates main contrib non-free" >> /etc/apt/sources.list && \
+    echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+
+RUN apt-get update && apt-get install -y wget git make && rm -rf /var/lib/apt/lists/*
+
+RUN wget https://go.dev/dl/go1.4.3.linux-amd64.tar.gz && \
+    tar -C /usr/local -xzf go1.4.3.linux-amd64.tar.gz
+
+ENV PATH=/usr/local/go/bin:$PATH
+ENV GOPATH=/go
+ENV GOOS=linux
+ENV GOARCH=386
+ENV CGO_ENABLED=0
+
+WORKDIR /go/src/portal
+
+COPY . .
+
+RUN rm -f go.mod go.sum && rm -rf vendor
+
+RUN go get -d -v ./...
+
+RUN go build -ldflags="-s -w" -o MP48WebService .
+
+CMD ["./MP48WebService"]
