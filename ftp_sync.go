@@ -335,11 +335,11 @@ func SyncFileDeleteFromAllRemotes(localPath string) error {
 			continue
 		}
 		if machine.FTP.Username == "" || machine.FTP.Password == "" {
-			log.Printf("⚠️ Credenziali FTP mancanti per %s, salto...", machine.Name)
+			fmt.Printf("⚠️ Credenziali FTP mancanti per %s, salto...\n", machine.Name)
 			continue
 		}
 		remotePath := buildRemotePath(localPath, machine.FTP.Username)
-		log.Printf("🗑️ Eliminazione %s su %s (%s) -> %s", localPath, machine.Name, machine.Host, remotePath)
+		fmt.Printf("🗑️ Eliminazione %s su %s (%s) -> %s\n", localPath, machine.Name, machine.Host, remotePath)
 
 		var err error
 		for attempt := 1; attempt <= 3; attempt++ {
@@ -349,23 +349,23 @@ func SyncFileDeleteFromAllRemotes(localPath string) error {
 			}
 			// Se il file non esiste, non è un errore
 			if strings.Contains(err.Error(), "file does not exist") {
-				log.Printf("ℹ️ File già eliminato su %s", machine.Name)
+				fmt.Printf("ℹ️ File già eliminato su %s\n", machine.Name)
 				return nil
 			}
-			log.Printf("⚠️ Tentativo %d/3 fallito per %s: %v, riprovo...", attempt, machine.Name, err)
+			fmt.Printf("⚠️ Tentativo %d/3 fallito per %s: %v, riprovo...\n", attempt, machine.Name, err)
 			time.Sleep(2 * time.Second)
 		}
 		if err != nil {
 			// Non consideriamo errore se il file non esiste
 			if strings.Contains(err.Error(), "file does not exist") {
-				log.Printf("ℹ️ File non presente su %s", machine.Name)
+				fmt.Printf("ℹ️ File non presente su %s\n", machine.Name)
 				continue
 			}
-			log.Printf("❌ Errore eliminazione su %s dopo 3 tentativi: %v", machine.Name, err)
+			fmt.Printf("❌ Errore eliminazione su %s dopo 3 tentativi: %v\n", machine.Name, err)
 			lastErr = err
 			continue
 		}
-		log.Printf("✅ File eliminato su %s", machine.Name)
+		fmt.Printf("✅ File eliminato su %s\n", machine.Name)
 	}
 	return lastErr
 }
