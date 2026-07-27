@@ -2,15 +2,14 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
 	"runtime"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 type SignalPoint struct {
@@ -32,86 +31,170 @@ type SignalsData struct {
 	Alarms    []SignalPoint
 }
 
-// Estrae i campi da una riga di output del comando (o da file)
-// Formato atteso: tipo idx ... (dipende dal tipo)
-func parsePointLine(tokens []string) (pointType string, mdbIdx int, data map[string]string) {
-	if len(tokens) < 3 {
+// parsePointLinePipe gestisce il formato con pipe (sia file che console)
+func parsePointLinePipe(line string) (pointType string, mdbIdx int, data map[string]string) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" ||
+		strings.HasPrefix(trimmed, "----") ||
+		strings.HasPrefix(trimmed, "TYPE") ||
+		strings.HasPrefix(trimmed, "Itaco") ||
+		strings.HasPrefix(trimmed, "Shared") ||
+		strings.HasPrefix(trimmed, "---------------------------------------------------------------------------------------------------------") ||
+		strings.HasPrefix(trimmed, " IOADDR") ||
+		strings.HasPrefix(trimmed, "   IOADDR") ||
+		strings.HasPrefix(trimmed, " [") ||
+		strings.Contains(trimmed, "------------") {
 		return "", 0, nil
 	}
-	pointType = tokens[0]
-	idx, _ := strconv.Atoi(tokens[1])
-	mdbIdx = idx
+
+	parts := strings.Split(line, "|")
+	if len(parts) < 4 {
+		return "", 0, nil
+	}
+
+	typeField := strings.TrimSpace(parts[0])
+	idxField := strings.TrimSpace(parts[1])
+	lenOrValField := strings.TrimSpace(parts[2])
+	valOrQualityField := strings.TrimSpace(parts[3])
+
+	if typeField == "" || idxField == "" {
+		return "", 0, nil
+	}
+
+	switch typeField {
+	case "SIGNAL":
+		typeField = "SGN"
+	case "MEASURE":
+		typeField = "MSR"
+	case "CONTROL":
+		typeField = "CTR"
+	case "SETPOINT":
+		typeField = "STP"
+	case "VARIABLE":
+		return "", 0, nil
+	}
+
+	if typeField != "SGN" && typeField != "MSR" && typeField != "CTR" && typeField != "STP" {
+		return "", 0, nil
+	}
+
+	idx, err := strconv.Atoi(idxField)
+	if err != nil {
+		return "", 0, nil
+	}
+
 	data = make(map[string]string)
-	switch pointType {
-	case "SGN":
-		// Formato: SGN idx len val quality tiv timestamp time
-		if len(tokens) >= 7 {
-			data["value"] = tokens[3]
-			data["quality"] = tokens[4] // BL,SB,NT,IV
-			data["tiv"] = tokens[5]
-			data["timestamp"] = tokens[6] + " " + tokens[7]
-		}
-	case "MSR":
-		// MSR idx len val fval quality tiv timestamp time
-		if len(tokens) >= 8 {
-			data["value"] = tokens[4]
-			data["quality"] = tokens[6] // OV,BL,SB,NT,IV
-			data["tiv"] = tokens[7]
-			data["timestamp"] = tokens[8] + " " + tokens[9]
-		}
-	case "CTR":
-		// CTR idx val quality rem timestamp time
-		if len(tokens) >= 6 {
-			data["value"] = tokens[2]
-			data["quality"] = tokens[3] // QU,SE,Len
-			data["rem"] = tokens[4]
-			data["timestamp"] = tokens[5] + " " + tokens[6]
-		}
-	case "STP":
-		// STP idx val quality rem timestamp time
-		if len(tokens) >= 6 {
-			data["value"] = tokens[2]
-			data["quality"] = tokens[3] // QU,SE
-			data["rem"] = tokens[4]
-			data["timestamp"] = tokens[5] + " " + tokens[6]
+	data["len"] = lenOrValField
+	data["value"] = valOrQualityField
+
+	if len(parts) >= 5 {
+		qualityField := strings.TrimSpace(parts[4])
+		if strings.Contains(qualityField, ",") {
+			data["quality"] = qualityField
 		}
 	}
-	return
+	if len(parts) >= 6 {
+		tivField := strings.TrimSpace(parts[5])
+		if tivField != "" && strings.Contains(tivField, "time:") {
+			tsParts := strings.SplitN(tivField, "time:", 2)
+			if len(tsParts) == 2 {
+				data["timestamp"] = strings.TrimSpace(tsParts[1])
+			}
+		} else {
+			data["tiv"] = tivField
+		}
+	}
+	if len(parts) >= 7 {
+		ts := strings.TrimSpace(parts[6])
+		if ts != "" && ts != "|" && !strings.Contains(ts, "----") {
+			if strings.Contains(ts, "time:") {
+				tsParts := strings.SplitN(ts, "time:", 2)
+				if len(tsParts) == 2 {
+					data["timestamp"] = strings.TrimSpace(tsParts[1])
+				}
+			} else {
+				data["timestamp"] = ts
+			}
+		}
+	}
+	if timestamp, ok := data["timestamp"]; !ok || timestamp == "" {
+		if len(parts) >= 5 {
+			ts := strings.TrimSpace(parts[4])
+			if strings.Contains(ts, "time:") {
+				tsParts := strings.SplitN(ts, "time:", 2)
+				if len(tsParts) == 2 {
+					data["timestamp"] = strings.TrimSpace(tsParts[1])
+				}
+			}
+		}
+	}
+
+	return typeField, idx, data
 }
 
-// getPointsOutput restituisce l'output dei punti (da comando o da file)
+// getPointsOutput esegue lo script wrapper e legge il file points.txt
 func getPointsOutput() (string, error) {
-	if runtime.GOOS == "windows" {
-		if data, err := ioutil.ReadFile("points.txt"); err == nil {
+	log.Printf("🔍 getPointsOutput: avvio su OS=%s, Mp48Type=%s", runtime.GOOS, config.Mp48Type)
+
+	filePath := config.PointsFile
+	if filePath == "" {
+		filePath = "points.txt"
+	}
+
+	scriptPath := config.PointsCmd
+	if scriptPath == "" {
+		log.Printf("⚠️ PointsCmd non configurato, provo a leggere points.txt esistente")
+		data, err := ioutil.ReadFile(filePath)
+		if err == nil {
+			log.Printf("✅ points.txt letto (%d byte)", len(data))
 			return string(data), nil
 		}
 		return "", nil
 	}
 
-	// Linux: prova il comando
-	cmd := exec.Command("sh", "-c", config.PointsCmd)
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		log.Printf("Comando %s fallito: %v, provo points.txt", config.PointsCmd, err)
-		if data, err := ioutil.ReadFile("points.txt"); err == nil {
-			return string(data), nil
-		}
-		return "", err
+	scriptPath = strings.TrimSpace(scriptPath)
+
+	// Definiamo i parametri crudi per il Kernel
+	binaryPath := "/bin/bash"
+	argv := []string{"bash", scriptPath}
+	envv := []string{"PATH=/bin:/usr/bin:/sbin:/usr/sbin"}
+
+	// Lancio della syscall atomica
+	pid, err := InvocatoreSyscallNativo(binaryPath, argv, envv)
+	if err != nil {
+		log.Printf("❌ Chiamata hardware fallita: %v", err)
+	} else {
+		log.Printf("✅ Processo clonato con successo! PID generato: %d", pid)
+		
+		// Blocchiamo il padre in modo sincrono finché lo script non ha finito di scrivere in /tmp
+		var wstatus syscall.WaitStatus
+		_, _ = syscall.Wait4(pid, &wstatus, 0, nil)
+		log.Printf("Processo figlio terminato con codice: %d", wstatus.ExitStatus())
 	}
-	return out.String(), nil
+	// Leggi il file generato dallo script
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		log.Printf("❌ Errore lettura %s: %v", filePath, err)
+		return "", nil
+	}
+	log.Printf("✅ points.txt letto (%d byte)", len(data))
+	return string(data), nil
 }
 
 // readCfWebLines legge il file di configurazione dei segnali
 func readCfWebLines() ([]string, error) {
 	if config.CfWebFile == "" {
+		log.Printf("❌ cf_web_file non configurato")
 		return nil, fmt.Errorf("cf_web_file non configurato")
 	}
+	log.Printf("📂 Leggo cf_web.txt da: %s", config.CfWebFile)
 	f, err := os.Open(config.CfWebFile)
 	if err != nil {
+		log.Printf("❌ Errore apertura %s: %v", config.CfWebFile, err)
 		return nil, err
 	}
 	defer f.Close()
+
 	var lines []string
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
@@ -120,47 +203,79 @@ func readCfWebLines() ([]string, error) {
 			lines = append(lines, line)
 		}
 	}
-	return lines, scanner.Err()
+	if err := scanner.Err(); err != nil {
+		log.Printf("❌ Errore scansione %s: %v", config.CfWebFile, err)
+		return nil, err
+	}
+
+	log.Printf("✅ Lette %d righe non commentate", len(lines))
+	return lines, nil
 }
 
 // parseCfWebLine analizza una riga del file cf_web.txt
-func parseCfWebLine(line string) (typeName string, mdbIdx int, desc string, err error) {
+func parseCfWebLine(line string) (typeName string, mdbIdx int, defaultVal string, desc string, err error) {
 	parts := strings.SplitN(line, "#", 2)
 	if len(parts) == 2 {
 		desc = strings.TrimSpace(parts[1])
 	}
 	fields := strings.Fields(parts[0])
 	if len(fields) < 2 {
-		err = fmt.Errorf("formato riga errato: %s", line)
+		err = fmt.Errorf("formato riga errato: %s (servono almeno 2 campi)", line)
 		return
 	}
 	typeName = fields[0]
 	mdbIdx, err = strconv.Atoi(fields[1])
+	if err != nil {
+		return
+	}
+	if len(fields) >= 3 {
+		defaultVal = fields[2]
+	} else {
+		defaultVal = "?"
+	}
 	return
 }
 
 // GetSignalsData è la funzione principale
 func GetSignalsData() (*SignalsData, error) {
-	// Leggi il file cf_web.txt
+	log.Printf("🚀 GetSignalsData: inizio")
+
 	cfLines, err := readCfWebLines()
 	if err != nil {
-		// Se il file non esiste, ritorna dati vuoti
+		log.Printf("⚠️ readCfWebLines fallito: %v, restituisco dati vuoti", err)
 		return &SignalsData{}, nil
 	}
+	if len(cfLines) == 0 {
+		log.Printf("⚠️ Nessuna riga valida in cf_web.txt, restituisco dati vuoti")
+		return &SignalsData{}, nil
+	}
+	log.Printf("📋 cfLines: %d righe", len(cfLines))
 
-	// Ottieni i valori live (se disponibili)
-	pointsOutput, _ := getPointsOutput()
+	pointsOutput, err := getPointsOutput()
+	if err != nil {
+		log.Printf("⚠️ getPointsOutput fallito: %v, continuo con valori vuoti", err)
+		pointsOutput = ""
+	}
+	log.Printf("📊 pointsOutput lunghezza: %d byte", len(pointsOutput))
+
 	pointsMap := make(map[int]map[string]string)
-	scanner := bufio.NewScanner(strings.NewReader(pointsOutput))
-	for scanner.Scan() {
-		tokens := strings.Fields(scanner.Text())
-		if len(tokens) < 2 {
-			continue
+	if pointsOutput != "" {
+		scanner := bufio.NewScanner(strings.NewReader(pointsOutput))
+		lineNum := 0
+		for scanner.Scan() {
+			lineNum++
+			line := scanner.Text()
+			typ, idx, data := parsePointLinePipe(line)
+			if typ != "" && idx > 0 && data != nil {
+				pointsMap[idx] = data
+			}
 		}
-		typ, idx, data := parsePointLine(tokens)
-		if typ != "" && idx > 0 && data != nil {
-			pointsMap[idx] = data
+		if err := scanner.Err(); err != nil {
+			log.Printf("⚠️ Errore scanner: %v", err)
 		}
+		log.Printf("✅ Parsing output: %d punti trovati su %d righe", len(pointsMap), lineNum)
+	} else {
+		log.Printf("⚠️ pointsOutput vuoto")
 	}
 
 	data := &SignalsData{
@@ -173,23 +288,21 @@ func GetSignalsData() (*SignalsData, error) {
 	}
 
 	for _, line := range cfLines {
-		typ, idx, desc, err := parseCfWebLine(line)
+		typ, idx, defVal, desc, err := parseCfWebLine(line)
 		if err != nil {
+			log.Printf("⚠️ Errore parsing riga '%s': %v", line, err)
 			continue
 		}
 		pointInfo, ok := pointsMap[idx]
-		value := ""
+		value := defVal
 		timestamp := ""
-		quality := ""
 		if ok {
-			value = pointInfo["value"]
-			timestamp = pointInfo["timestamp"]
-			quality = pointInfo["quality"]
-		} else {
-			// Valore di default: '?'
-			value = "?"
-			timestamp = ""
-			quality = ""
+			if v, exists := pointInfo["value"]; exists {
+				value = v
+			}
+			if ts, exists := pointInfo["timestamp"]; exists {
+				timestamp = ts
+			}
 		}
 		sp := SignalPoint{
 			MdbIdx:    idx,
@@ -197,10 +310,10 @@ func GetSignalsData() (*SignalsData, error) {
 			Timestamp: timestamp,
 			Desc:      desc,
 		}
-		// Aggiungi qualità se volessi usarla
-		if quality != "" {
-			sp.Quality = make(map[string]string)
-			// Puoi splittare i caratteri
+		if ok {
+			if _, exists := pointInfo["quality"]; exists {
+				sp.Quality = make(map[string]string)
+			}
 		}
 
 		switch typ {
@@ -216,7 +329,14 @@ func GetSignalsData() (*SignalsData, error) {
 			data.Warnings = append(data.Warnings, sp)
 		case "ALM":
 			data.Alarms = append(data.Alarms, sp)
+		default:
+			log.Printf("⚠️ Tipo sconosciuto '%s' per idx %d", typ, idx)
 		}
 	}
+
+	log.Printf("✅ GetSignalsData completato: Posizioni=%d, Misure=%d, Comandi=%d, Setpoint=%d, Warning=%d, Allarmi=%d",
+		len(data.Positions), len(data.Measures), len(data.Commands), len(data.Setpoints),
+		len(data.Warnings), len(data.Alarms))
+
 	return data, nil
 }

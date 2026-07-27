@@ -30,6 +30,12 @@ type TelnetConfig struct {
 	SudoPassword  string `json:"-"`
 }
 
+type SSHConfig struct {
+    Port          int    `json:"port"`
+    RebootCommand string `json:"reboot_command"`
+    TimeoutSec    int    `json:"timeout_seconds"`
+}
+
 type RemoteMachine struct {
 	ID             string       `json:"id"`
 	Name           string       `json:"name"`
@@ -41,6 +47,8 @@ type RemoteMachine struct {
 	SudoPassword   string       `json:"-"`
 	FTP            FTPConfig    `json:"ftp"`
 	Telnet         TelnetConfig `json:"telnet"`
+    SSH            SSHConfig    `json:"ssh"`      // nuovo
+    UseSSH         bool         `json:"use_ssh"`  // nuovo	
 }
 type RemoteCPUConfig struct {
 	FTP    FTPConfig    `json:"ftp"`
@@ -76,10 +84,12 @@ type Config struct {
 	AuditLogDir              string          `json:"audit_log_dir"`
 	CurrentConfigurationDir  string          `json:"current_configuration_dir"`
 	CfWebFile                string          `json:"cf_web_file"`
+	PointsFile               string          `json:"points_file"`
 	PointsCmd                string          `json:"points_cmd"`
 	NetworkInterfacesFile    string          `json:"network_interfaces_file"`
 	RemoteInterfacesPattern  string          `json:"remote_interfaces_pattern"`
 	AnalogInputsCmd          string          `json:"analog_inputs_cmd"`
+	AnalogPointsFile         string          `json:"analog_points_file"`	
 	AnalogInputsDescFile     string          `json:"analog_inputs_desc_file"`
 	AnalogInputsDescBase     string          `json:"analog_inputs_desc_base"`
 	InfoVersionDescDir       string          `json:"info_version_desc_file"`

@@ -3,6 +3,7 @@
     "analog_inputs_desc_file": "/local/cfg/cf_%d_104_c.conf",
     "audit_log_dir": "/local/var/log/rtu/LogAppMp48",
     "cf_web_file": "/cf_web.txt",
+    "points_file": "/home/andrea/Documenti/GitDea/test/cfweb/points.txt",
     "config_extensions": [
         ".rcd",
         ".rwb",
@@ -58,6 +59,12 @@
             },
             "id": "cpu2",
             "name": "CPU secondaria",
+            "use_ssh": false,
+            "ssh": {
+                "port": 22,
+                "reboot_command": "sudo reboot",
+                "timeout_seconds": 10
+            },              
             "telnet": {
                 "port": 23,
                 "reboot_command": "sudo reboot",

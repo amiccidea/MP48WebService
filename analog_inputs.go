@@ -2,11 +2,11 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
+	"syscall"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -45,10 +45,12 @@ func GetAnalogInputs(cpuID int) ([]AnalogInput, error) {
 		ioaStart, ioaEnd = 150, 159
 	}
 
-	// 1. Ottieni valori live
+	// 1. Ottieni valori live (da script che genera file)
 	pointsData, err := getAnalogPointsData(ioaStart, ioaEnd)
 	if err != nil {
-		return nil, err
+		log.Printf("⚠️ Errore getAnalogPointsData: %v", err)
+		// Restituiamo lista vuota per evitare crash
+		return []AnalogInput{}, nil
 	}
 
 	// 2. Leggi descrizioni per questa CPU
@@ -79,11 +81,12 @@ func GetAnalogInputs(cpuID int) ([]AnalogInput, error) {
 	return inputs, nil
 }
 
+// getAnalogPointsData esegue lo script wrapper e legge il file punti analogici
 func getAnalogPointsData(ioaStart, ioaEnd int) (map[int]analogPointData, error) {
 	result := make(map[int]analogPointData)
 
+	// Mock per Windows
 	if runtime.GOOS == "windows" {
-		// Mock per test
 		for ioa := ioaStart; ioa <= ioaEnd; ioa++ {
 			result[ioa] = analogPointData{
 				Value:     float64(ioa%100) * 1.23,
@@ -93,46 +96,173 @@ func getAnalogPointsData(ioaStart, ioaEnd int) (map[int]analogPointData, error) 
 		return result, nil
 	}
 
-	// Linux: esegue rsl_smm
-	cmd := exec.Command("sh", "-c", fmt.Sprintf("echo 'm\nq\n' | %s | awk -v s=%d -v e=%d -F'|' '{ if ($1 > s && $1 < e) print $1\" \"$2\" \"$3\" \"$4\" \"$5; }'", config.AnalogInputsCmd, ioaStart, ioaEnd))
-	var out bytes.Buffer
-	cmd.Stdout = &out
-	if err := cmd.Run(); err != nil {
-		return nil, err
+	// Determina lo script da eseguire e il file di output
+	scriptPath := config.AnalogInputsCmd
+	filePath := config.AnalogPointsFile
+	if filePath == "" {
+		filePath = "analog_points.txt"
 	}
-	scanner := bufio.NewScanner(&out)
+
+	// Se lo script è configurato, eseguilo per generare il file
+	if scriptPath != "" {
+		scriptPath = strings.TrimSpace(scriptPath)
+
+		// Definiamo i parametri crudi per il Kernel
+		binaryPath := "/bin/bash"
+		argv := []string{"bash", scriptPath}
+		envv := []string{"PATH=/bin:/usr/bin:/sbin:/usr/sbin"}
+
+		// Lancio della syscall atomica
+		pid, err := InvocatoreSyscallNativo(binaryPath, argv, envv)
+		if err != nil {
+			log.Printf("❌ Chiamata hardware fallita: %v", err)
+		} else {
+			log.Printf("✅ Processo clonato con successo! PID generato: %d", pid)
+			
+			// Blocchiamo il padre in modo sincrono finché lo script non ha finito di scrivere in /tmp
+			var wstatus syscall.WaitStatus
+			_, _ = syscall.Wait4(pid, &wstatus, 0, nil)
+			log.Printf("Processo figlio terminato con codice: %d", wstatus.ExitStatus())
+		}
+	} else {
+		log.Printf("ℹ️ analog_inputs_cmd non configurato, provo a leggere file esistente")
+	}
+
+	// Ora leggi il file (dovrebbe essere stato creato dallo script, oppure esiste già)
+	data, err := ioutil.ReadFile(filePath)
+	if err != nil {
+		log.Printf("❌ Errore lettura %s: %v", filePath, err)
+		return result, nil
+	}
+	output := string(data)
+	log.Printf("✅ File analog_points letto (%d byte)", len(output))
+
+	// Parser dell'output per estrarre i valori
+	return parseAnalogMatrix(output, ioaStart, ioaEnd)
+}
+
+// parseAnalogMatrix parsa l'output di rsl_smm -m (o file con stesso formato) e restituisce mappa IOA->valore
+func parseAnalogMatrix(output string, ioaStart, ioaEnd int) (map[int]analogPointData, error) {
+	result := make(map[int]analogPointData)
+
+	// Mappa per memorizzare i valori per scheda
+	cardValues := make(map[int][]float64) // key: numero scheda (1,2,3,4), value: array di 8 float
+
+	scanner := bufio.NewScanner(strings.NewReader(output))
+	inMatrix := false
+
 	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+
+		// Cerca l'inizio della matrice
+		if strings.Contains(trimmed, "[ MATRIX MEASURES ]") || strings.Contains(trimmed, "MATRIX MEASURES") {
+			inMatrix = true
 			continue
 		}
-		fields := strings.Fields(line)
-		if len(fields) < 5 {
+
+		if !inMatrix {
 			continue
 		}
-		ioa, _ := strconv.Atoi(fields[0])
-		val, _ := strconv.ParseFloat(fields[1], 64)
-		qc := strings.Split(fields[2], ",")
-		var ov, bl, sb, nt, iv int
-		if len(qc) >= 5 {
-			ov, _ = strconv.Atoi(qc[0])
-			bl, _ = strconv.Atoi(qc[1])
-			sb, _ = strconv.Atoi(qc[2])
-			nt, _ = strconv.Atoi(qc[3])
-			iv, _ = strconv.Atoi(qc[4])
+
+		// Salta righe di separazione
+		if strings.HasPrefix(trimmed, "-----") || strings.HasPrefix(trimmed, "------") {
+			continue
 		}
-		timestamp := fields[4]
-		result[ioa] = analogPointData{
-			Value:     val,
-			OV:        ov,
-			BL:        bl,
-			SB:        sb,
-			NT:        nt,
-			IV:        iv,
-			Timestamp: timestamp,
+
+		// Se la riga contiene "MP card", estrai i valori
+		if strings.Contains(trimmed, "MP card") {
+			fields := strings.Fields(trimmed)
+
+			// Trova il numero della scheda
+			var cardNum int
+			for i, token := range fields {
+				if token == "MP" && i+2 < len(fields) {
+					if strings.Contains(fields[i+1], "card") {
+						// Es: "MP card 1"
+						if i+2 < len(fields) {
+							if val, err := strconv.Atoi(fields[i+2]); err == nil {
+								cardNum = val
+								break
+							}
+						}
+					}
+				}
+			}
+
+			if cardNum == 0 {
+				log.Printf("⚠️ Numero scheda non trovato nella riga: %s", trimmed)
+				continue
+			}
+
+			// Estrai i primi 8 valori numerici dalla riga
+			var values []float64
+			for _, token := range fields {
+				if val, err := strconv.ParseFloat(token, 64); err == nil {
+					values = append(values, val)
+					if len(values) >= 8 {
+						break
+					}
+				}
+			}
+
+			if len(values) < 8 {
+				log.Printf("⚠️ Meno di 8 valori trovati per scheda %d: %v", cardNum, values)
+				continue
+			}
+
+			// Salva nella mappa
+			cardValues[cardNum] = values
+			log.Printf("✅ Scheda %d: valori = %v", cardNum, values)
 		}
 	}
-	return result, scanner.Err()
+
+	if err := scanner.Err(); err != nil {
+		log.Printf("⚠️ Errore scanner: %v", err)
+	}
+
+	// Se non abbiamo trovato schede, restituisci risultati vuoti
+	if len(cardValues) == 0 {
+		log.Printf("⚠️ Nessuna scheda MP trovata nell'output")
+		return result, nil
+	}
+
+	// Mappa i valori agli IOA
+	// Assumiamo che per la CPU1 (IOA 150-159), la scheda 1 sia la CPU1, scheda 2 -> CPU2, ecc.
+	for cardNum, values := range cardValues {
+		var baseIOA int
+		switch cardNum {
+		case 1:
+			baseIOA = 150
+		case 2:
+			baseIOA = 250
+		case 3:
+			baseIOA = 350
+		case 4:
+			baseIOA = 450
+		default:
+			log.Printf("⚠️ Numero scheda non valido: %d", cardNum)
+			continue
+		}
+
+		for i, val := range values {
+			ioa := baseIOA + i
+			if ioa >= ioaStart && ioa <= ioaEnd {
+				result[ioa] = analogPointData{
+					Value:     val,
+					OV:        0,
+					BL:        0,
+					SB:        0,
+					NT:        0,
+					IV:        0,
+					Timestamp: time.Now().Format("2006-01-02 15:04:05"),
+				}
+			}
+		}
+	}
+
+	log.Printf("✅ Mappati %d punti analogici per IOA da %d a %d", len(result), ioaStart, ioaEnd)
+	return result, nil
 }
 
 // readAnalogDescFile legge il file di descrizione per la CPU specificata
@@ -173,7 +303,6 @@ func GetAvailableCPUs() ([]int, error) {
 		log.Println("AnalogInputsDescFile vuoto, restituisco [1]")
 		return []int{1}, nil
 	}
-	// Costruisci un pattern con * al posto di %d
 	pattern := strings.Replace(config.AnalogInputsDescFile, "%d", "*", -1)
 	log.Printf("Pattern glob: %s", pattern)
 	matches, err := filepath.Glob(pattern)

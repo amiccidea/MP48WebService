@@ -1,8 +1,10 @@
 {
-    "analog_inputs_cmd": "/usr/local/bin/rsl_smm",
+    "analog_inputs_cmd": "/home/andrea/Documenti/GitDea/from_rsl_m_to_tmp.sh",
     "analog_inputs_desc_file": "/home/andrea/Documenti/GitDea/test/etcrtu/cf_%d_104_c.conf",
     "audit_log_dir": "/home/andrea/Documenti/GitDea/test/LogAppMp48",
     "cf_web_file": "/home/andrea/Documenti/GitDea/test/cfweb/cf_web.txt",
+    "points_file": "/tmp/rsl_smm_temp_points.txt",
+    "analog_points_file":"/tmp/rsl_smm_m_temp_points.txt",
     "config_extensions": [
         ".rcd",
         ".rwb",
@@ -42,7 +44,7 @@
     "mp48_type": "gateway",
     "network_interfaces_file": "/home/andrea/Documenti/GitDea/test/etcnetwork/interfaces",
     "password_expiry_days": 180,
-    "points_cmd": "/usr/local/bin/rsl_smm -p",
+    "points_cmd": "/home/andrea/Documenti/GitDea/from_rsl_to_tmp.sh",
     "port": "8080",
     "portssl": "8433",
     "protected_users": [
@@ -59,6 +61,12 @@
             },
             "id": "cpu2",
             "name": "CPU secondaria",
+            "use_ssh": false,
+            "ssh": {
+                "port": 22,
+                "reboot_command": "sudo reboot",
+                "timeout_seconds": 10
+            },            
             "telnet": {
                 "port": 23,
                 "reboot_command": "sudo reboot",

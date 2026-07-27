@@ -43,6 +43,7 @@ export GOARCH=386
 export GO386=quark        # <-- FLAG FONDAMENTALE
 export CGO_ENABLED=0
 
+
 $GO_CMD mod tidy
 $GO_CMD mod vendor
 

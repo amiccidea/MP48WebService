@@ -85,6 +85,11 @@ func (rl *RateLimiter) cleanup() {
 // RateLimitMiddleware applica il rate limiting
 func RateLimitMiddleware(limiter *RateLimiter, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+        // ⚠️ NON limitare le richieste GET
+        if r.Method == http.MethodGet {
+            next(w, r)
+            return
+        }		
 		ip := getClientIP(r)
 		if !limiter.Allow(ip) {
 			http.Error(w, "Troppe richieste, riprova più tardi", http.StatusTooManyRequests)
