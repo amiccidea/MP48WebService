@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 	"time"
-
+"syscall"
 	"github.com/gorilla/csrf"
 )
 
@@ -33,13 +33,25 @@ var (
 // ==================== FUNZIONI DI RIAVVIO ====================
 
 // RebootLocal riavvia la macchina corrente (solo Linux)
-func RebootLocal() error {
-	if runtime.GOOS != "linux" {
-		return fmt.Errorf("reboot locale supportato solo su Linux")
-	}
-	return exec.Command("reboot").Run()
-}
+//func RebootLocal() error {
+//if runtime.GOOS != "linux" {
+	//	return fmt.Errorf("reboot locale supportato solo su Linux")
+	//}
+	//return exec.Command("reboot").Run()
+//}
 
+func RebootLocal() error {
+    if runtime.GOOS != "linux" {
+        return fmt.Errorf("reboot locale supportato solo su Linux")
+    }
+    // Usa syscall.Reboot per evitare problemi di PATH e permessi
+    err := syscall.Reboot(syscall.LINUX_REBOOT_CMD_RESTART)
+    if err != nil {
+        log.Printf("⚠️ syscall.Reboot fallito: %v, provo comandi esterni", err)
+        // fallback ai comandi esterni...
+    }
+    return err
+}
 // RebootRemoteViaTelnet invia il comando reboot via Telnet o SSH (client esterno)
 func RebootRemoteViaTelnet(machine *RemoteMachine) error {
 	if machine.Host == "" {
