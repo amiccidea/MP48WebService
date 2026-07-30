@@ -8,12 +8,14 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
-"syscall"
+
 	"github.com/gorilla/csrf"
 )
 
@@ -32,38 +34,41 @@ var (
 
 // ==================== FUNZIONI DI RIAVVIO ====================
 
-// RebootLocal riavvia la macchina corrente (solo Linux)
-//func RebootLocal() error {
-//if runtime.GOOS != "linux" {
-	//	return fmt.Errorf("reboot locale supportato solo su Linux")
-	//}
-	//return exec.Command("reboot").Run()
-//}
-
+// RebootLocal riavvia la macchina corrente usando syscall.Reboot
 func RebootLocal() error {
-    if runtime.GOOS != "linux" {
-        return fmt.Errorf("reboot locale supportato solo su Linux")
-    }
-    // Usa syscall.Reboot per evitare problemi di PATH e permessi
-    err := syscall.Reboot(syscall.LINUX_REBOOT_CMD_RESTART)
-    if err != nil {
-        log.Printf("⚠️ syscall.Reboot fallito: %v, provo comandi esterni", err)
-        // fallback ai comandi esterni...
-    }
-    return err
+	if runtime.GOOS != "linux" {
+		return fmt.Errorf("reboot locale supportato solo su Linux")
+	}
+	log.Printf("🔄 Tentativo reboot locale con syscall.Reboot...")
+	err := syscall.Reboot(syscall.LINUX_REBOOT_CMD_RESTART)
+	if err != nil {
+		log.Printf("⚠️ syscall.Reboot fallito: %v", err)
+		// Fallback: comando esterno
+		log.Printf("🔄 Tentativo fallback con /sbin/reboot...")
+		cmd := exec.Command("/sbin/reboot")
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err2 := cmd.Run(); err2 != nil {
+			return fmt.Errorf("syscall.Reboot: %v, /sbin/reboot: %v", err, err2)
+		}
+		return nil
+	}
+	log.Printf("✅ syscall.Reboot eseguito con successo")
+	return nil
 }
-// RebootRemoteViaTelnet invia il comando reboot via Telnet o SSH (client esterno)
+
+// RebootRemoteViaTelnet invia il comando reboot via Telnet usando net.Dial
 func RebootRemoteViaTelnet(machine *RemoteMachine) error {
 	if machine.Host == "" {
 		return fmt.Errorf("IP non risolto per macchina %s", machine.ID)
 	}
 
-	// Credenziali (le stesse per Telnet e SSH)
+	// Credenziali
 	username := machine.TelnetUsername
 	password := machine.TelnetPassword
 	sudoPwd := machine.SudoPassword
 
-	// Se mancano le credenziali, prova a ricaricarle da remote_creds.enc
+	// Ricarica credenziali se mancano
 	if username == "" || password == "" {
 		log.Printf("Credenziali mancanti per %s, tentativo di ricarica...", machine.ID)
 		remoteCreds, err := loadRemoteCredentials(currentDataDir)
@@ -72,7 +77,6 @@ func RebootRemoteViaTelnet(machine *RemoteMachine) error {
 		}
 		if remoteCreds != nil && remoteCreds.Machines != nil {
 			if cred, ok := remoteCreds.Machines[machine.ID]; ok {
-				// Aggiorna la configurazione globale e la copia locale
 				for i := range config.RemoteMachines {
 					if config.RemoteMachines[i].ID == machine.ID {
 						config.RemoteMachines[i].TelnetUsername = cred.TelnetUsername
@@ -95,7 +99,7 @@ func RebootRemoteViaTelnet(machine *RemoteMachine) error {
 	}
 
 	// ================================================================
-	//  SSH (se abilitato)
+	//  SSH (se abilitato) - usando sshpass (ancora exec.Command)
 	// ================================================================
 	if machine.UseSSH {
 		port := machine.SSH.Port
@@ -107,7 +111,6 @@ func RebootRemoteViaTelnet(machine *RemoteMachine) error {
 			rebootCmd = "sudo reboot"
 		}
 
-		// Verifica che sshpass sia installato
 		if _, err := exec.LookPath("sshpass"); err != nil {
 			return fmt.Errorf("sshpass non trovato. Installa sshpass per usare SSH")
 		}
@@ -122,19 +125,17 @@ func RebootRemoteViaTelnet(machine *RemoteMachine) error {
 			"-p", fmt.Sprintf("%d", port),
 			fullCmd,
 		)
-
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 		if err := cmd.Run(); err != nil {
 			return fmt.Errorf("errore esecuzione SSH: %v, stderr: %s", err, stderr.String())
 		}
-
 		log.Printf("Comando reboot via SSH inviato a %s (%s)", machine.Name, machine.Host)
 		return nil
 	}
 
 	// ================================================================
-	//  TELNET (comportamento originale)
+	//  TELNET (implementato con net.Dial)
 	// ================================================================
 	port := machine.Telnet.Port
 	if port == 0 {
@@ -145,43 +146,59 @@ func RebootRemoteViaTelnet(machine *RemoteMachine) error {
 		rebootCmd = "reboot"
 	}
 
-	commands := []string{username, password}
+	address := fmt.Sprintf("%s:%d", machine.Host, port)
+	log.Printf("🔌 Connessione Telnet a %s", address)
+
+	conn, err := net.DialTimeout("tcp", address, 10*time.Second)
+	if err != nil {
+		return fmt.Errorf("connessione Telnet fallita: %w", err)
+	}
+	defer conn.Close()
+
+	// Imposta timeout
+	conn.SetDeadline(time.Now().Add(10 * time.Second))
+
+	// Leggi il banner (opzionale, ma per sicurezza leggiamo e scartiamo)
+	buf := make([]byte, 1024)
+	conn.Read(buf) // ignora
+
+	// Invia username
+	if _, err := conn.Write([]byte(username + "\n")); err != nil {
+		return fmt.Errorf("invio username fallito: %w", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	// Invia password
+	if _, err := conn.Write([]byte(password + "\n")); err != nil {
+		return fmt.Errorf("invio password fallito: %w", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	// Invia comando reboot
+	var fullCmd string
 	if strings.Contains(rebootCmd, "sudo") && sudoPwd != "" {
-		fullCmd := fmt.Sprintf("echo '%s' | sudo -S %s", sudoPwd, rebootCmd)
-		commands = append(commands, fullCmd)
+		fullCmd = fmt.Sprintf("echo '%s' | sudo -S %s", sudoPwd, rebootCmd)
 	} else {
-		commands = append(commands, rebootCmd)
+		fullCmd = rebootCmd
+	}
+	if _, err := conn.Write([]byte(fullCmd + "\n")); err != nil {
+		return fmt.Errorf("invio comando reboot fallito: %w", err)
 	}
 
-	cmd := exec.Command("telnet", machine.Host, fmt.Sprintf("%d", port))
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return err
-	}
-	if err := cmd.Start(); err != nil {
-		return err
-	}
-	for _, c := range commands {
-		time.Sleep(800 * time.Millisecond)
-		if _, err := stdin.Write([]byte(c + "\n")); err != nil {
-			return err
-		}
-	}
+	// Aspetta che il comando venga elaborato
 	time.Sleep(2 * time.Second)
-	stdin.Close()
 
 	log.Printf("Comando reboot via Telnet inviato a %s (%s)", machine.Name, machine.Host)
 	return nil
 }
 
-// WaitForRemoteReachable attende che la macchina remota sia raggiungibile (tentativi ogni 30 sec)
+// WaitForRemoteReachable attende che la macchina remota sia raggiungibile
 func WaitForRemoteReachable(machine *RemoteMachine, maxWaitSec int, opID string) bool {
 	if machine.Host == "" {
 		updateRebootStatus(opID, "error", "IP non risolto per la macchina remota")
 		return false
 	}
 
-	// Scegli la porta in base al protocollo
 	var port int
 	if machine.UseSSH {
 		port = machine.SSH.Port
@@ -387,6 +404,7 @@ func rebootLocalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	go RebootLocal()
+	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Riavvio locale avviato"))
 }
 
