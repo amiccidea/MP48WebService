@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"strings"
 	"time"
@@ -36,7 +37,39 @@ func GetRemoteSystemInfo(machine RemoteMachine) RemoteSystemInfo {
 		return info
 	}
 
-	if machine.Telnet.Username == "" || machine.Telnet.Password == "" {
+	// Usa i campi corretti (come in reboot.go)
+	username := machine.TelnetUsername
+	password := machine.TelnetPassword
+
+	// Se mancano le credenziali, prova a ricaricarle da remote_creds.enc
+	if username == "" || password == "" {
+		log.Printf("Credenziali mancanti per %s, tentativo di ricarica...", machine.ID)
+		remoteCreds, err := loadRemoteCredentials(currentDataDir)
+		if err != nil {
+			info.Error = fmt.Sprintf("Errore caricamento credenziali: %v", err)
+			return info
+		}
+		if remoteCreds != nil && remoteCreds.Machines != nil {
+			if cred, ok := remoteCreds.Machines[machine.ID]; ok {
+				// Aggiorna la configurazione globale e la copia locale
+				for i := range config.RemoteMachines {
+					if config.RemoteMachines[i].ID == machine.ID {
+						config.RemoteMachines[i].TelnetUsername = cred.TelnetUsername
+						config.RemoteMachines[i].TelnetPassword = cred.TelnetPassword
+						config.RemoteMachines[i].SudoPassword = cred.SudoPassword
+						machine.TelnetUsername = cred.TelnetUsername
+						machine.TelnetPassword = cred.TelnetPassword
+						machine.SudoPassword = cred.SudoPassword
+						username = cred.TelnetUsername
+						password = cred.TelnetPassword
+						break
+					}
+				}
+			}
+		}
+	}
+
+	if username == "" || password == "" {
 		info.Error = "Credenziali Telnet non configurate"
 		return info
 	}
@@ -47,7 +80,7 @@ func GetRemoteSystemInfo(machine RemoteMachine) RemoteSystemInfo {
 	}
 	addr := fmt.Sprintf("%s:%d", machine.Host, port)
 
-	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
+	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
 	if err != nil {
 		info.Error = fmt.Sprintf("Connessione fallita: %v", err)
 		return info
@@ -55,12 +88,14 @@ func GetRemoteSystemInfo(machine RemoteMachine) RemoteSystemInfo {
 	defer conn.Close()
 	conn.SetDeadline(time.Now().Add(15 * time.Second))
 
-	// Login
+	// Invia un newline per svegliare il server Telnet
 	conn.Write([]byte("\n"))
 	time.Sleep(300 * time.Millisecond)
-	conn.Write([]byte(machine.Telnet.Username + "\n"))
+
+	// Login
+	conn.Write([]byte(username + "\n"))
 	time.Sleep(300 * time.Millisecond)
-	conn.Write([]byte(machine.Telnet.Password + "\n"))
+	conn.Write([]byte(password + "\n"))
 	time.Sleep(500 * time.Millisecond)
 
 	// Leggi il banner/login (per pulire il buffer)
@@ -130,7 +165,6 @@ func execTelnetCommand2(conn net.Conn, cmd string) (string, error) {
 
 // parseUptime2 estrae l'uptime da "uptime"
 func parseUptime2(output string) string {
-	// Esempio: " 10:00:00 up 2 days, 3:45,  1 user,  load average: 0.23, 0.45, 0.67"
 	if strings.Contains(output, "up ") {
 		parts := strings.Split(output, "up ")
 		if len(parts) >= 2 {

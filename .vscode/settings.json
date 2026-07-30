@@ -1,8 +1,7 @@
 {
-    "go.goroot": "/usr/local/go1.15",
+    "go.goroot": "/usr/local/go",
     "go.alternateTools": {
-        "go": "/usr/local/go1.15/bin/go",
-        "gopls": "/home/andrea/go/bin/gopls"
+        "go": "/usr/local/go/bin/go"
     },
     "go.useLanguageServer": false,
     "go.toolsManagement.autoUpdate": false
