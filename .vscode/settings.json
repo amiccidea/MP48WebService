@@ -4,5 +4,8 @@
         "go": "/usr/local/go/bin/go"
     },
     "go.useLanguageServer": false,
-    "go.toolsManagement.autoUpdate": false
+    "go.toolsManagement.autoUpdate": false,
+    "terminal.integrated.env.linux": {
+        "PATH": "/home/andrea/go/bin:/usr/local/go/bin:${env:PATH}"
+    }
 }

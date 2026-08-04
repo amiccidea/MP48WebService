@@ -61,7 +61,7 @@
             },
             "id": "cpu2",
             "name": "CPU secondaria",
-            "use_ssh": false,
+            "use_ssh": true,
             "ssh": {
                 "port": 22,
                 "reboot_command": "sudo reboot",
