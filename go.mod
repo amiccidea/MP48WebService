@@ -10,7 +10,6 @@ require (
 )
 
 require (
-	github.com/go-delve/delve v1.27.1 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
 	github.com/stretchr/testify v1.5.1 // indirect
 )
