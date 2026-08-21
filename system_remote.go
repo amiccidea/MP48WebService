@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"io/ioutil"
 	"log"
-	"net"
 	"strings"
+	"syscall"
 	"time"
+	"net"
 )
 
 // RemoteSystemInfo contiene le informazioni di sistema di una macchina remota
@@ -24,7 +26,88 @@ type RemoteSystemInfo struct {
 	Error       string `json:"error,omitempty"`
 }
 
-// GetRemoteSystemInfo raccoglie le informazioni di sistema da una macchina remota via Telnet
+// getRemoteInfoViaSyscall esegue lo script wrapper per le info remote
+func getRemoteInfoViaSyscall(machine RemoteMachine) (string, error) {
+	if machine.Host == "" {
+		return "", fmt.Errorf("IP non risolto per macchina %s", machine.ID)
+	}
+
+	username := machine.TelnetUsername
+	password := machine.TelnetPassword
+
+	// Ricarica credenziali se mancano
+	if username == "" || password == "" {
+		log.Printf("Credenziali mancanti per %s, tentativo di ricarica...", machine.ID)
+		remoteCreds, err := loadRemoteCredentials(currentDataDir)
+		if err != nil {
+			return "", err
+		}
+		if remoteCreds != nil && remoteCreds.Machines != nil {
+			if cred, ok := remoteCreds.Machines[machine.ID]; ok {
+				machine.TelnetUsername = cred.TelnetUsername
+				machine.TelnetPassword = cred.TelnetPassword
+				username = cred.TelnetUsername
+				password = cred.TelnetPassword
+				log.Printf("✅ Credenziali ricaricate per %s", machine.ID)
+			}
+		}
+	}
+
+	if username == "" || password == "" {
+		return "", fmt.Errorf("credenziali non configurate per %s. Vai su /admin/remote-credentials per configurarle", machine.Name)
+	}
+
+	// Prendi lo script path dalla configurazione
+	scriptPath := machine.Telnet.ScriptInfoPath
+	if scriptPath == "" {
+		// Fallback per retrocompatibilità
+		scriptPath = "/usr/local/bin/remote_info.sh"
+		log.Printf("⚠️ ScriptInfoPath non configurato per %s, uso fallback: %s", machine.Name, scriptPath)
+	}
+
+	argv := []string{
+		scriptPath,
+		machine.Host,
+		username,
+		password,
+	}
+	envv := []string{
+		"PATH=/usr/local/bin:/usr/bin:/bin:/sbin",
+		"HOME=/root",
+	}
+
+	// Usa la syscall (funzione definita in esecutore_sys.go)
+	pid, err := InvocatoreSyscallNativo(scriptPath, argv, envv)
+	if err != nil {
+		return "", fmt.Errorf("syscall fallita: %w", err)
+	}
+
+	var wstatus syscall.WaitStatus
+	_, err = syscall.Wait4(pid, &wstatus, 0, nil)
+	if err != nil {
+		return "", fmt.Errorf("errore wait4: %w", err)
+	}
+
+	if wstatus.ExitStatus() != 0 {
+		return "", fmt.Errorf("script terminato con codice %d", wstatus.ExitStatus())
+	}
+
+	// Leggi il file di output
+	outputFile := "/tmp/remote_info.txt"
+	data, err := ioutil.ReadFile(outputFile)
+	if err != nil {
+		return "", fmt.Errorf("errore lettura output: %w", err)
+	}
+
+	output := string(data)
+	if strings.Contains(output, "INFO_FAILED") {
+		return "", fmt.Errorf("script fallito")
+	}
+
+	return output, nil
+}
+
+// GetRemoteSystemInfo raccoglie le informazioni di sistema da una macchina remota
 func GetRemoteSystemInfo(machine RemoteMachine) RemoteSystemInfo {
 	info := RemoteSystemInfo{
 		MachineName: machine.Name,
@@ -37,100 +120,30 @@ func GetRemoteSystemInfo(machine RemoteMachine) RemoteSystemInfo {
 		return info
 	}
 
-	// Usa i campi corretti (come in reboot.go)
-	username := machine.TelnetUsername
-	password := machine.TelnetPassword
-
-	// Se mancano le credenziali, prova a ricaricarle da remote_creds.enc
-	if username == "" || password == "" {
-		log.Printf("Credenziali mancanti per %s, tentativo di ricarica...", machine.ID)
-		remoteCreds, err := loadRemoteCredentials(currentDataDir)
-		if err != nil {
-			info.Error = fmt.Sprintf("Errore caricamento credenziali: %v", err)
-			return info
-		}
-		if remoteCreds != nil && remoteCreds.Machines != nil {
-			if cred, ok := remoteCreds.Machines[machine.ID]; ok {
-				// Aggiorna la configurazione globale e la copia locale
-				for i := range config.RemoteMachines {
-					if config.RemoteMachines[i].ID == machine.ID {
-						config.RemoteMachines[i].TelnetUsername = cred.TelnetUsername
-						config.RemoteMachines[i].TelnetPassword = cred.TelnetPassword
-						config.RemoteMachines[i].SudoPassword = cred.SudoPassword
-						machine.TelnetUsername = cred.TelnetUsername
-						machine.TelnetPassword = cred.TelnetPassword
-						machine.SudoPassword = cred.SudoPassword
-						username = cred.TelnetUsername
-						password = cred.TelnetPassword
-						break
-					}
-				}
-			}
-		}
-	}
-
-	if username == "" || password == "" {
-		info.Error = "Credenziali Telnet non configurate"
-		return info
-	}
-
-	port := machine.Telnet.Port
-	if port == 0 {
-		port = 23
-	}
-	addr := fmt.Sprintf("%s:%d", machine.Host, port)
-
-	conn, err := net.DialTimeout("tcp", addr, 10*time.Second)
+	// Usa la syscall per ottenere le info
+	output, err := getRemoteInfoViaSyscall(machine)
 	if err != nil {
-		info.Error = fmt.Sprintf("Connessione fallita: %v", err)
+		info.Error = fmt.Sprintf("Errore recupero info: %v", err)
 		return info
 	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(15 * time.Second))
 
-	// Invia un newline per svegliare il server Telnet
-	conn.Write([]byte("\n"))
-	time.Sleep(300 * time.Millisecond)
-
-	// Login
-	conn.Write([]byte(username + "\n"))
-	time.Sleep(300 * time.Millisecond)
-	conn.Write([]byte(password + "\n"))
-	time.Sleep(500 * time.Millisecond)
-
-	// Leggi il banner/login (per pulire il buffer)
-	conn.Read(make([]byte, 4096))
-	conn.SetDeadline(time.Now().Add(10 * time.Second))
-
-	// ---- RACCOLTA DATI ----
-
-	// 1. Uptime e carico medio
-	if output, err := execTelnetCommand2(conn, "uptime"); err == nil {
-		info.Uptime = parseUptime2(output)
-		info.CPU = parseLoadAvg2(output)
-	}
-
-	// 2. Memoria (free -m)
-	if output, err := execTelnetCommand2(conn, "free -m"); err == nil {
-		info.MemTotal, info.MemUsed, info.MemFree = parseMemory2(output)
-	}
-
-	// 3. Disco (df -h /)
-	if output, err := execTelnetCommand2(conn, "df -h /"); err == nil {
-		info.DiskTotal, info.DiskUsed, info.DiskFree = parseDisk2(output)
-	}
+	// Parser dell'output dello script
+	info.Uptime = parseUptime2(output)
+	info.CPU = parseLoadAvg2(output)
+	info.MemTotal, info.MemUsed, info.MemFree = parseMemory2(output)
+	info.DiskTotal, info.DiskUsed, info.DiskFree = parseDisk2(output)
 
 	info.Status = "online"
 	return info
 }
 
+// ==================== FUNZIONI DI PARSING (invariate) ====================
+
 // execTelnetCommand2 esegue un comando e restituisce l'output pulito
+// (mantenuta per compatibilità, ma non più usata)
 func execTelnetCommand2(conn net.Conn, cmd string) (string, error) {
-	// Invia il comando
 	conn.Write([]byte(cmd + "\n"))
 	time.Sleep(800 * time.Millisecond)
-
-	// Leggi la risposta (buffer più grande)
 	buf := make([]byte, 8192)
 	n, err := conn.Read(buf)
 	if err != nil {
@@ -138,7 +151,6 @@ func execTelnetCommand2(conn net.Conn, cmd string) (string, error) {
 	}
 	output := string(buf[:n])
 
-	// Pulisci l'output: rimuovi il comando stesso e il prompt
 	lines := strings.Split(output, "\n")
 	var cleaned []string
 	for _, line := range lines {
@@ -146,15 +158,12 @@ func execTelnetCommand2(conn net.Conn, cmd string) (string, error) {
 		if line == "" {
 			continue
 		}
-		// Salta la riga che contiene il comando stesso
 		if strings.Contains(line, cmd) {
 			continue
 		}
-		// Salta righe che sembrano prompt (es. "user@host:~$", "user@host:~#")
 		if strings.Contains(line, "$") || strings.Contains(line, "#") {
 			continue
 		}
-		// Salta righe di login/banner
 		if strings.Contains(line, "login:") || strings.Contains(line, "Password:") {
 			continue
 		}

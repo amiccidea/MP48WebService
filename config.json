@@ -71,7 +71,8 @@
                 "port": 23,
                 "reboot_command": "sudo reboot",
                 "timeout_seconds": 10,
-                "script_path": "/home/andrea/Documenti/GitDea/test/reboot_remote.sh"
+                "script_path": "/home/andrea/Documenti/GitDea/test/reboot_remote.sh",
+                "script_info_path": "/home/andrea/Documenti/GitDea/test/remote_info.sh"
             }
         }
     ],
