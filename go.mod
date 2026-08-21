@@ -11,5 +11,6 @@ require (
 
 require (
 	github.com/gorilla/securecookie v1.1.2 // indirect
+	github.com/reiver/go-telnet v0.0.0-20250617105250-7da9ad70a2b2
 	github.com/stretchr/testify v1.5.1 // indirect
 )

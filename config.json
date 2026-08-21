@@ -61,7 +61,7 @@
             },
             "id": "cpu2",
             "name": "CPU secondaria",
-            "use_ssh": true,
+            "use_ssh": false,
             "ssh": {
                 "port": 22,
                 "reboot_command": "sudo reboot",
@@ -70,7 +70,8 @@
             "telnet": {
                 "port": 23,
                 "reboot_command": "sudo reboot",
-                "timeout_seconds": 10
+                "timeout_seconds": 10,
+                "script_path": "/home/andrea/Documenti/GitDea/test/reboot_remote.sh"
             }
         }
     ],

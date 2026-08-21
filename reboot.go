@@ -16,7 +16,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
-
+    
 	"github.com/gorilla/csrf"
 )
 
@@ -60,271 +60,241 @@ func RebootLocal() error {
 
 // RebootRemoteViaTelnet invia il comando reboot via Telnet usando net.Dial
 func RebootRemoteViaTelnet(machine *RemoteMachine) error {
-	if machine.Host == "" {
-		return fmt.Errorf("IP non risolto per macchina %s", machine.ID)
-	}
+    if machine.Host == "" {
+        return fmt.Errorf("IP non risolto per macchina %s", machine.ID)
+    }
 
-	// Credenziali
-	username := machine.TelnetUsername
-	password := machine.TelnetPassword
-	sudoPwd := machine.SudoPassword
+    // Credenziali
+    username := machine.TelnetUsername
+    password := machine.TelnetPassword
+    sudoPwd := machine.SudoPassword
 
-	// Ricarica credenziali se mancano
-	if username == "" || password == "" {
-		log.Printf("Credenziali mancanti per %s, tentativo di ricarica...", machine.ID)
-		remoteCreds, err := loadRemoteCredentials(currentDataDir)
-		if err != nil {
-			return fmt.Errorf("errore caricamento credenziali: %w", err)
-		}
-		if remoteCreds != nil && remoteCreds.Machines != nil {
-			if cred, ok := remoteCreds.Machines[machine.ID]; ok {
-				for i := range config.RemoteMachines {
-					if config.RemoteMachines[i].ID == machine.ID {
-						config.RemoteMachines[i].TelnetUsername = cred.TelnetUsername
-						config.RemoteMachines[i].TelnetPassword = cred.TelnetPassword
-						config.RemoteMachines[i].SudoPassword = cred.SudoPassword
-						machine.TelnetUsername = cred.TelnetUsername
-						machine.TelnetPassword = cred.TelnetPassword
-						machine.SudoPassword = cred.SudoPassword
-						username = cred.TelnetUsername
-						password = cred.TelnetPassword
-						sudoPwd = cred.SudoPassword
-						break
-					}
-				}
-			}
-		}
-		if username == "" || password == "" {
-			return fmt.Errorf("credenziali non configurate per %s. Vai su /admin/remote-credentials per configurarle", machine.Name)
-		}
-	}
+    // Ricarica credenziali se mancano
+    if username == "" || password == "" {
+        log.Printf("Credenziali mancanti per %s, tentativo di ricarica...", machine.ID)
+        remoteCreds, err := loadRemoteCredentials(currentDataDir)
+        if err != nil {
+            return fmt.Errorf("errore caricamento credenziali: %w", err)
+        }
+        if remoteCreds != nil && remoteCreds.Machines != nil {
+            if cred, ok := remoteCreds.Machines[machine.ID]; ok {
+                for i := range config.RemoteMachines {
+                    if config.RemoteMachines[i].ID == machine.ID {
+                        config.RemoteMachines[i].TelnetUsername = cred.TelnetUsername
+                        config.RemoteMachines[i].TelnetPassword = cred.TelnetPassword
+                        config.RemoteMachines[i].SudoPassword = cred.SudoPassword
+                        machine.TelnetUsername = cred.TelnetUsername
+                        machine.TelnetPassword = cred.TelnetPassword
+                        machine.SudoPassword = cred.SudoPassword
+                        username = cred.TelnetUsername
+                        password = cred.TelnetPassword
+                        sudoPwd = cred.SudoPassword
+                        break
+                    }
+                }
+            }
+        }
+        if username == "" || password == "" {
+            return fmt.Errorf("credenziali non configurate per %s. Vai su /admin/remote-credentials per configurarle", machine.Name)
+        }
+    }
 
-	// ================================================================
-	//  SSH (se abilitato)
-	// ================================================================
-	if machine.UseSSH {
-		port := machine.SSH.Port
-		if port == 0 {
-			port = 22
-		}
-		rebootCmd := machine.SSH.RebootCommand
-		if rebootCmd == "" {
-			rebootCmd = "sudo reboot"
-		}
+    // ================================================================
+    //  SSH (se abilitato)
+    // ================================================================
+    if machine.UseSSH {
+        port := machine.SSH.Port
+        if port == 0 {
+            port = 22
+        }
+        rebootCmd := machine.SSH.RebootCommand
+        if rebootCmd == "" {
+            rebootCmd = "sudo reboot"
+        }
 
-		if _, err := exec.LookPath("sshpass"); err != nil {
-			return fmt.Errorf("sshpass non trovato. Installa sshpass per usare SSH")
-		}
+        if _, err := exec.LookPath("sshpass"); err != nil {
+            return fmt.Errorf("sshpass non trovato. Installa sshpass per usare SSH")
+        }
 
-		fullCmd := rebootCmd
-		if strings.Contains(rebootCmd, "sudo") && sudoPwd != "" {
-			fullCmd = fmt.Sprintf("echo '%s' | sudo -S %s", sudoPwd, rebootCmd)
-		}
+        fullCmd := rebootCmd
+        if strings.Contains(rebootCmd, "sudo") && sudoPwd != "" {
+            fullCmd = fmt.Sprintf("echo '%s' | sudo -S %s", sudoPwd, rebootCmd)
+        }
 
-		cmd := exec.Command("sshpass", "-p", password, "ssh",
-			fmt.Sprintf("%s@%s", username, machine.Host),
-			"-p", fmt.Sprintf("%d", port),
-			fullCmd,
-		)
-		var stderr bytes.Buffer
-		cmd.Stderr = &stderr
-		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("errore esecuzione SSH: %v, stderr: %s", err, stderr.String())
-		}
-		log.Printf("Comando reboot via SSH inviato a %s (%s)", machine.Name, machine.Host)
-		return nil
-	}
+        cmd := exec.Command("sshpass", "-p", password, "ssh",
+            fmt.Sprintf("%s@%s", username, machine.Host),
+            "-p", fmt.Sprintf("%d", port),
+            fullCmd,
+        )
+        var stderr bytes.Buffer
+        cmd.Stderr = &stderr
+        if err := cmd.Run(); err != nil {
+            return fmt.Errorf("errore esecuzione SSH: %v, stderr: %s", err, stderr.String())
+        }
+        log.Printf("Comando reboot via SSH inviato a %s (%s)", machine.Name, machine.Host)
+        return nil
+    }
 
-	// ================================================================
-	//  TELNET (implementato con net.Dial)
-	// ================================================================
-	port := machine.Telnet.Port
-	if port == 0 {
-		port = 23
-	}
-	rebootCmd := machine.Telnet.RebootCommand
-	if rebootCmd == "" {
-		rebootCmd = "reboot"
-	}
+    // ================================================================
+    //  TELNET (senza lettura, solo scrittura)
+    // ================================================================
+    port := machine.Telnet.Port
+    if port == 0 {
+        port = 23
+    }
+    rebootCmd := machine.Telnet.RebootCommand
+    if rebootCmd == "" {
+        rebootCmd = "reboot"
+    }
 
-	address := fmt.Sprintf("%s:%d", machine.Host, port)
-	log.Printf("🔌 Connessione Telnet a %s", address)
+    address := fmt.Sprintf("%s:%d", machine.Host, port)
+    log.Printf("🔌 Connessione Telnet a %s", address)
 
-	conn, err := net.DialTimeout("tcp", address, 10*time.Second)
-	if err != nil {
-		return fmt.Errorf("connessione Telnet fallita: %w", err)
-	}
-	defer conn.Close()
-	conn.SetDeadline(time.Now().Add(15 * time.Second))
+    // Connessione con timeout breve
+    conn, err := net.DialTimeout("tcp", address, 5*time.Second)
+    if err != nil {
+        return fmt.Errorf("connessione Telnet fallita: %w", err)
+    }
+    defer conn.Close()
 
-	buf := make([]byte, 4096)
+    // Imposta timeout di scrittura
+    conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
 
-	// Leggi banner
-	conn.Read(buf)
+    // Invia username e password senza attendere risposta
+    log.Printf("📤 Invio username: %s", username)
+    if _, err := conn.Write([]byte(username + "\r\n")); err != nil {
+        return fmt.Errorf("invio username fallito: %w", err)
+    }
+    time.Sleep(300 * time.Millisecond)
 
-	// Login con \r\n
-	log.Printf("📤 Invio username: %s", username)
-	if _, err := conn.Write([]byte(username + "\r\n")); err != nil {
-		return fmt.Errorf("invio username fallito: %w", err)
-	}
-	time.Sleep(500 * time.Millisecond)
+    log.Printf("📤 Invio password")
+    if _, err := conn.Write([]byte(password + "\r\n")); err != nil {
+        return fmt.Errorf("invio password fallito: %w", err)
+    }
+    time.Sleep(300 * time.Millisecond)
 
-	// Leggi la risposta (dovrebbe essere Password:)
-	n, _ := conn.Read(buf)
-	if n > 0 {
-		log.Printf("📥 Dopo username: %s", strings.TrimSpace(string(buf[:n])))
-	}
+    // Costruisci il comando
+    var fullCmd string
+    if strings.Contains(rebootCmd, "sudo") && sudoPwd != "" {
+        fullCmd = fmt.Sprintf("echo '%s' | sudo -S %s", sudoPwd, rebootCmd)
+    } else {
+        fullCmd = rebootCmd
+    }
 
-	log.Printf("📤 Invio password")
-	if _, err := conn.Write([]byte(password + "\r\n")); err != nil {
-		return fmt.Errorf("invio password fallito: %w", err)
-	}
-	time.Sleep(500 * time.Millisecond)
+    log.Printf("📤 Invio comando: %s", fullCmd)
+    if _, err := conn.Write([]byte(fullCmd + "\r\n")); err != nil {
+        return fmt.Errorf("invio comando fallito: %w", err)
+    }
 
-	// Leggi risposta login (dovrebbe essere il prompt della shell)
-	n, _ = conn.Read(buf)
-	if n > 0 {
-		resp := strings.TrimSpace(string(buf[:n]))
-		log.Printf("📥 Dopo password: %s", resp)
-		if strings.Contains(resp, "Login incorrect") || strings.Contains(resp, "login:") {
-			return fmt.Errorf("login fallito: %s", resp)
-		}
-	}
+    // Tempo per il comando di essere elaborato
+    time.Sleep(2 * time.Second)
 
-	// Lista comandi da provare (con \r\n)
-	commandsToTry := []string{
-		"shutdown -r now",
-		"init 6",
-		"reboot",
-		"/sbin/reboot",
-	}
-
-	// Aggiungi comando configurato (con sudo se necessario)
-	if strings.Contains(rebootCmd, "sudo") && sudoPwd != "" {
-		fullCmd := fmt.Sprintf("echo '%s' | sudo -S %s", sudoPwd, rebootCmd)
-		commandsToTry = append([]string{fullCmd}, commandsToTry...)
-	} else {
-		commandsToTry = append([]string{rebootCmd}, commandsToTry...)
-	}
-
-	// Prova ogni comando
-	for _, cmd := range commandsToTry {
-		log.Printf("📤 Invio comando: %s", cmd)
-
-		if _, err := conn.Write([]byte(cmd + "\r\n")); err != nil {
-			log.Printf("⚠️ Errore invio comando %s: %v", cmd, err)
-			continue
-		}
-		time.Sleep(2 * time.Second)
-
-		conn.SetReadDeadline(time.Now().Add(2 * time.Second))
-		n, err := conn.Read(buf)
-		if err != nil {
-			if err.Error() == "EOF" {
-				log.Printf("✅ Connessione chiusa dopo comando %s (reboot riuscito)", cmd)
-				return nil
-			}
-			if strings.Contains(err.Error(), "timeout") {
-				log.Printf("✅ Nessuna risposta per %s (probabilmente reboot riuscito)", cmd)
-				return nil
-			}
-			log.Printf("⚠️ Errore lettura risposta per %s: %v", cmd, err)
-			continue
-		}
-		if n > 0 {
-			response := strings.TrimSpace(string(buf[:n]))
-			log.Printf("📥 Risposta: %s", response)
-
-			// Se il comando non esiste, prova il prossimo
-			if strings.Contains(response, "not found") || strings.Contains(response, "No such file") {
-				log.Printf("⚠️ Comando %s non trovato, provo il prossimo", cmd)
-				continue
-			}
-			// Se richiede privilegi di root, prova il prossimo
-			if strings.Contains(response, "root") || strings.Contains(response, "permission denied") {
-				log.Printf("⚠️ Comando %s richiede privilegi di root, provo il prossimo", cmd)
-				continue
-			}
-			// Se compare "Login incorrect" e il comando era un reboot, è successo
-			if strings.Contains(response, "Login incorrect") && (strings.Contains(cmd, "reboot") || strings.Contains(cmd, "shutdown") || strings.Contains(cmd, "init")) {
-				log.Printf("✅ Comando %s ha causato la chiusura della sessione (reboot riuscito)", cmd)
-				return nil
-			}
-			// Se la risposta contiene "reboot", consideriamo successo
-			if strings.Contains(response, "reboot") {
-				log.Printf("✅ Comando %s eseguito (risposta: %s)", cmd, response)
-				return nil
-			}
-			// Se la risposta è un prompt, il comando è stato eseguito ma non ha riavviato
-			if strings.Contains(response, "$") || strings.Contains(response, "#") || strings.Contains(response, "~") {
-				log.Printf("ℹ️ Comando %s eseguito ma non ha riavviato, provo il prossimo", cmd)
-				continue
-			}
-		}
-	}
-
-	return fmt.Errorf("nessun comando di reboot ha funzionato sulla macchina remota")
+    log.Printf("✅ Comando reboot inviato a %s (%s)", machine.Name, machine.Host)
+    return nil
 }
-
 
 // rebootViaSyscall usa la syscall per eseguire lo script wrapper
 func rebootViaSyscall(machine *RemoteMachine) error {
-	if machine.Host == "" {
-		return fmt.Errorf("IP non risolto per macchina %s", machine.ID)
-	}
+    if machine.Host == "" {
+        return fmt.Errorf("IP non risolto per macchina %s", machine.ID)
+    }
 
-	// Credenziali
-	username := machine.TelnetUsername
-	password := machine.TelnetPassword
-	sudoPwd := machine.SudoPassword
+    // Credenziali
+    username := machine.TelnetUsername
+    password := machine.TelnetPassword
+    sudoPwd := machine.SudoPassword
 
-	// Script wrapper
-	scriptPath := "/usr/local/bin/reboot_remote.sh"
+    // 🔍 LOG DI DEBUG
+    log.Printf("🔍 rebootViaSyscall: host=%s, username='%s', sudoPwd len=%d", machine.Host, username, len(sudoPwd))
 
-	// Argomenti: host, username, password, sudo_password
-	argv := []string{
-		scriptPath,
-		machine.Host,
-		username,
-		password,
-		sudoPwd,
-	}
-	envv := []string{
-		"PATH=/usr/local/bin:/usr/bin:/bin:/sbin",
-		"HOME=/root",
-	}
+    // Se mancano, prova a ricaricare da remote_creds.enc
+    if username == "" || password == "" {
+        log.Printf("⚠️ Credenziali mancanti per %s, tentativo di ricarica da remote_creds.enc", machine.ID)
+        remoteCreds, err := loadRemoteCredentials(currentDataDir)
+        if err != nil {
+            log.Printf("❌ Errore caricamento remote_creds.enc: %v", err)
+            return fmt.Errorf("errore caricamento credenziali: %w", err)
+        }
+        if remoteCreds != nil && remoteCreds.Machines != nil {
+            if cred, ok := remoteCreds.Machines[machine.ID]; ok {
+                // Aggiorna la macchina locale
+                machine.TelnetUsername = cred.TelnetUsername
+                machine.TelnetPassword = cred.TelnetPassword
+                machine.SudoPassword = cred.SudoPassword
+                username = cred.TelnetUsername
+                password = cred.TelnetPassword
+                sudoPwd = cred.SudoPassword
+                log.Printf("✅ Credenziali ricaricate per %s: username='%s'", machine.ID, username)
+            } else {
+                log.Printf("❌ Nessuna credenziale per %s in remote_creds.enc", machine.ID)
+            }
+        } else {
+            log.Printf("❌ remote_creds.enc non trovato o vuoto")
+        }
+    }
 
-	// Usa la syscall per eseguire lo script
-	pid, err := InvocatoreSyscallNativo(scriptPath, argv, envv)
-	if err != nil {
-		return fmt.Errorf("syscall fallita: %w", err)
-	}
+    if username == "" || password == "" {
+        return fmt.Errorf("credenziali non configurate per %s. Vai su /admin/remote-credentials per configurarle", machine.Name)
+    }
 
-	// Attendi la terminazione del processo figlio
-	var wstatus syscall.WaitStatus
-	_, err = syscall.Wait4(pid, &wstatus, 0, nil)
-	if err != nil {
-		return fmt.Errorf("errore wait4: %w", err)
-	}
+    // Prendi lo script path dalla configurazione Telnet della macchina
+    scriptPath := machine.Telnet.ScriptPath
+    if scriptPath == "" {
+        scriptPath = "/usr/local/bin/reboot_remote.sh"
+        log.Printf("⚠️ ScriptPath non configurato per %s, uso fallback: %s", machine.Name, scriptPath)
+    }
 
-	if wstatus.ExitStatus() != 0 {
-		return fmt.Errorf("script terminato con codice %d", wstatus.ExitStatus())
-	}
+    // Determina se usare sudo in base al comando di reboot
+    rebootCmd := machine.Telnet.RebootCommand
+    useSudo := strings.Contains(rebootCmd, "sudo")
 
-	// Leggi il file di stato
-	statusFile := "/tmp/reboot_status.txt"
-	data, err := ioutil.ReadFile(statusFile)
-	if err != nil {
-		log.Printf("⚠️ Impossibile leggere %s: %v", statusFile, err)
-		// Se il file non esiste, ma lo script è andato a buon fine, consideriamo successo
-		return nil
-	}
-	status := strings.TrimSpace(string(data))
-	if status == "REBOOT_FAILED" {
-		return fmt.Errorf("reboot fallito (stato da file)")
-	}
+    // Argomenti per lo script: host, username, password, sudo_password, useSudo
+    argv := []string{
+        scriptPath,
+        machine.Host,
+        username,
+        password,
+        sudoPwd,
+        fmt.Sprintf("%t", useSudo), // "true" o "false"
+    }
 
-	return nil
+    // 🔍 LOG DI DEBUG
+    log.Printf("🔍 rebootViaSyscall: eseguo script con args: host=%s, username=%s, useSudo=%v", machine.Host, username, useSudo)
+
+    envv := []string{
+        "PATH=/usr/local/bin:/usr/bin:/bin:/sbin",
+        "HOME=/root",
+    }
+
+    pid, err := InvocatoreSyscallNativo(scriptPath, argv, envv)
+    if err != nil {
+        return fmt.Errorf("syscall fallita: %w", err)
+    }
+
+    var wstatus syscall.WaitStatus
+    _, err = syscall.Wait4(pid, &wstatus, 0, nil)
+    if err != nil {
+        return fmt.Errorf("errore wait4: %w", err)
+    }
+
+    if wstatus.ExitStatus() != 0 {
+        return fmt.Errorf("script terminato con codice %d", wstatus.ExitStatus())
+    }
+
+    // Leggi il file di stato
+    statusFile := "/tmp/reboot_status.txt"
+    data, err := ioutil.ReadFile(statusFile)
+    if err != nil {
+        log.Printf("⚠️ Impossibile leggere %s: %v", statusFile, err)
+        return nil
+    }
+    status := strings.TrimSpace(string(data))
+    if status == "REBOOT_FAILED" {
+        return fmt.Errorf("reboot fallito (stato da file)")
+    }
+
+    log.Printf("✅ Reboot remoto via syscall completato per %s", machine.Name)
+    return nil
 }
 
 // WaitForRemoteReachable attende che la macchina remota sia raggiungibile
@@ -375,33 +345,40 @@ func WaitForRemoteReachable(machine *RemoteMachine, maxWaitSec int, opID string)
 	}
 }
 
-// startRemoteReboot esegue il reboot remoto e attende la raggiungibilità (senza reboot locale)
-func startRemoteReboot(machine *RemoteMachine) string {
-	id := fmt.Sprintf("remote_%s_%d", machine.ID, time.Now().UnixNano())
-	op := &RebootOperation{
-		ID:        id,
-		Status:    "pending",
-		Message:   "Avvio riavvio remoto...",
-		Timestamp: time.Now(),
-	}
-	rebootMutex.Lock()
-	rebootOps[id] = op
-	rebootMutex.Unlock()
 
-	go func() {
-		updateRebootStatus(id, "rebooting_remote", fmt.Sprintf("Riavvio %s (%s) in corso...", machine.Name, machine.Host))
-		if err := RebootRemoteViaTelnet(machine); err != nil {
-			updateRebootStatus(id, "error", fmt.Sprintf("Errore riavvio remoto: %v", err))
-			return
-		}
-		updateRebootStatus(id, "waiting_remote", fmt.Sprintf("Attesa che %s (%s) si riavvii (max 2 minuti)...", machine.Name, machine.Host))
-		if !WaitForRemoteReachable(machine, 120, id) {
-			return
-		}
-		updateRebootStatus(id, "completed", fmt.Sprintf("✅ %s (%s) è tornato online!", machine.Name, machine.Host))
-	}()
-	return id
+
+// startRemoteReboot usa la syscall per eseguire lo script wrapper
+func startRemoteReboot(machine *RemoteMachine) string {
+    id := fmt.Sprintf("remote_%s_%d", machine.ID, time.Now().UnixNano())
+    op := &RebootOperation{
+        ID:        id,
+        Status:    "pending",
+        Message:   "Avvio riavvio remoto...",
+        Timestamp: time.Now(),
+    }
+    rebootMutex.Lock()
+    rebootOps[id] = op
+    rebootMutex.Unlock()
+
+    go func() {
+        updateRebootStatus(id, "rebooting_remote", fmt.Sprintf("Riavvio %s (%s) in corso...", machine.Name, machine.Host))
+        
+        // Usa la syscall per eseguire lo script wrapper
+        err := rebootViaSyscall(machine)
+        if err != nil {
+            updateRebootStatus(id, "error", fmt.Sprintf("Errore riavvio remoto: %v", err))
+            return
+        }
+        
+        updateRebootStatus(id, "waiting_remote", fmt.Sprintf("Attesa che %s (%s) si riavvii (max 2 minuti)...", machine.Name, machine.Host))
+        if !WaitForRemoteReachable(machine, 120, id) {
+            return
+        }
+        updateRebootStatus(id, "completed", fmt.Sprintf("✅ %s (%s) è tornato online!", machine.Name, machine.Host))
+    }()
+    return id
 }
+
 
 // startCascadeReboot esegue reboot remoto, attende raggiungibilità e poi riavvia locale
 func startCascadeReboot(machine *RemoteMachine) string {
