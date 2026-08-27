@@ -65,7 +65,9 @@
             "ssh": {
                 "port": 22,
                 "reboot_command": "sudo reboot",
-                "timeout_seconds": 10
+                "timeout_seconds": 10,
+                "script_path": "/home/andrea/Documenti/GitDea/test/reboot_ssh.sh",
+                "script_info_path": "/home/andrea/Documenti/GitDea/test/remote_info_ssh.sh"     
             },            
             "telnet": {
                 "port": 23,

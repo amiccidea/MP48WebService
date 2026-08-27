@@ -6,8 +6,7 @@ import (
 	"log"
 	"strings"
 	"syscall"
-	"time"
-	"net"
+	
 )
 
 // RemoteSystemInfo contiene le informazioni di sistema di una macchina remota
@@ -26,8 +25,23 @@ type RemoteSystemInfo struct {
 	Error       string `json:"error,omitempty"`
 }
 
-// getRemoteInfoViaSyscall esegue lo script wrapper per le info remote
+// ================================================================
+//  DISPATCHER
+// ================================================================
+
+// getRemoteInfoViaSyscall dispatcher: sceglie il metodo in base a UseSSH
 func getRemoteInfoViaSyscall(machine RemoteMachine) (string, error) {
+	if machine.UseSSH {
+		return getRemoteInfoViaSyscallSSH(machine)
+	}
+	return getRemoteInfoViaSyscallTelnet(machine)
+}
+
+// ================================================================
+//  TELNET
+// ================================================================
+
+func getRemoteInfoViaSyscallTelnet(machine RemoteMachine) (string, error) {
 	if machine.Host == "" {
 		return "", fmt.Errorf("IP non risolto per macchina %s", machine.ID)
 	}
@@ -37,10 +51,10 @@ func getRemoteInfoViaSyscall(machine RemoteMachine) (string, error) {
 
 	// Ricarica credenziali se mancano
 	if username == "" || password == "" {
-		log.Printf("Credenziali mancanti per %s, tentativo di ricarica...", machine.ID)
+		log.Printf("⚠️ Credenziali mancanti per %s (Telnet Info), tentativo di ricarica...", machine.ID)
 		remoteCreds, err := loadRemoteCredentials(currentDataDir)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("errore caricamento credenziali: %w", err)
 		}
 		if remoteCreds != nil && remoteCreds.Machines != nil {
 			if cred, ok := remoteCreds.Machines[machine.ID]; ok {
@@ -48,7 +62,7 @@ func getRemoteInfoViaSyscall(machine RemoteMachine) (string, error) {
 				machine.TelnetPassword = cred.TelnetPassword
 				username = cred.TelnetUsername
 				password = cred.TelnetPassword
-				log.Printf("✅ Credenziali ricaricate per %s", machine.ID)
+				log.Printf("✅ Credenziali ricaricate per %s (Telnet Info): username='%s'", machine.ID, username)
 			}
 		}
 	}
@@ -57,12 +71,10 @@ func getRemoteInfoViaSyscall(machine RemoteMachine) (string, error) {
 		return "", fmt.Errorf("credenziali non configurate per %s. Vai su /admin/remote-credentials per configurarle", machine.Name)
 	}
 
-	// Prendi lo script path dalla configurazione
 	scriptPath := machine.Telnet.ScriptInfoPath
 	if scriptPath == "" {
-		// Fallback per retrocompatibilità
 		scriptPath = "/usr/local/bin/remote_info.sh"
-		log.Printf("⚠️ ScriptInfoPath non configurato per %s, uso fallback: %s", machine.Name, scriptPath)
+		log.Printf("⚠️ ScriptInfoPath Telnet non configurato per %s, uso fallback: %s", machine.Name, scriptPath)
 	}
 
 	argv := []string{
@@ -76,7 +88,8 @@ func getRemoteInfoViaSyscall(machine RemoteMachine) (string, error) {
 		"HOME=/root",
 	}
 
-	// Usa la syscall (funzione definita in esecutore_sys.go)
+	log.Printf("🔌 [TELNET Info] Eseguo script: %s su %s", scriptPath, machine.Host)
+
 	pid, err := InvocatoreSyscallNativo(scriptPath, argv, envv)
 	if err != nil {
 		return "", fmt.Errorf("syscall fallita: %w", err)
@@ -92,7 +105,6 @@ func getRemoteInfoViaSyscall(machine RemoteMachine) (string, error) {
 		return "", fmt.Errorf("script terminato con codice %d", wstatus.ExitStatus())
 	}
 
-	// Leggi il file di output
 	outputFile := "/tmp/remote_info.txt"
 	data, err := ioutil.ReadFile(outputFile)
 	if err != nil {
@@ -107,6 +119,92 @@ func getRemoteInfoViaSyscall(machine RemoteMachine) (string, error) {
 	return output, nil
 }
 
+// ================================================================
+//  SSH
+// ================================================================
+
+func getRemoteInfoViaSyscallSSH(machine RemoteMachine) (string, error) {
+	if machine.Host == "" {
+		return "", fmt.Errorf("IP non risolto per macchina %s", machine.ID)
+	}
+
+	username := machine.TelnetUsername
+	password := machine.TelnetPassword
+
+	// Ricarica credenziali se mancano
+	if username == "" || password == "" {
+		log.Printf("⚠️ Credenziali mancanti per %s (SSH Info), tentativo di ricarica...", machine.ID)
+		remoteCreds, err := loadRemoteCredentials(currentDataDir)
+		if err != nil {
+			return "", fmt.Errorf("errore caricamento credenziali: %w", err)
+		}
+		if remoteCreds != nil && remoteCreds.Machines != nil {
+			if cred, ok := remoteCreds.Machines[machine.ID]; ok {
+				machine.TelnetUsername = cred.TelnetUsername
+				machine.TelnetPassword = cred.TelnetPassword
+				username = cred.TelnetUsername
+				password = cred.TelnetPassword
+				log.Printf("✅ Credenziali ricaricate per %s (SSH Info): username='%s'", machine.ID, username)
+			}
+		}
+	}
+
+	if username == "" || password == "" {
+		return "", fmt.Errorf("credenziali non configurate per %s. Vai su /admin/remote-credentials per configurarle", machine.Name)
+	}
+
+	scriptPath := machine.SSH.ScriptInfoPath
+	if scriptPath == "" {
+		scriptPath = "/usr/local/bin/remote_info_ssh.sh"
+		log.Printf("⚠️ ScriptInfoPath SSH non configurato per %s, uso fallback: %s", machine.Name, scriptPath)
+	}
+
+	argv := []string{
+		scriptPath,
+		machine.Host,
+		username,
+		password,
+	}
+	envv := []string{
+		"PATH=/usr/local/bin:/usr/bin:/bin:/sbin",
+		"HOME=/root",
+	}
+
+	log.Printf("🔐 [SSH Info] Eseguo script: %s su %s", scriptPath, machine.Host)
+
+	pid, err := InvocatoreSyscallNativo(scriptPath, argv, envv)
+	if err != nil {
+		return "", fmt.Errorf("syscall fallita: %w", err)
+	}
+
+	var wstatus syscall.WaitStatus
+	_, err = syscall.Wait4(pid, &wstatus, 0, nil)
+	if err != nil {
+		return "", fmt.Errorf("errore wait4: %w", err)
+	}
+
+	if wstatus.ExitStatus() != 0 {
+		return "", fmt.Errorf("script terminato con codice %d", wstatus.ExitStatus())
+	}
+
+	outputFile := "/tmp/remote_info_ssh.txt"
+	data, err := ioutil.ReadFile(outputFile)
+	if err != nil {
+		return "", fmt.Errorf("errore lettura output: %w", err)
+	}
+
+	output := string(data)
+	if strings.Contains(output, "INFO_FAILED") {
+		return "", fmt.Errorf("script fallito")
+	}
+
+	return output, nil
+}
+
+// ================================================================
+//  FUNZIONE PRINCIPALE
+// ================================================================
+
 // GetRemoteSystemInfo raccoglie le informazioni di sistema da una macchina remota
 func GetRemoteSystemInfo(machine RemoteMachine) RemoteSystemInfo {
 	info := RemoteSystemInfo{
@@ -120,14 +218,12 @@ func GetRemoteSystemInfo(machine RemoteMachine) RemoteSystemInfo {
 		return info
 	}
 
-	// Usa la syscall per ottenere le info
 	output, err := getRemoteInfoViaSyscall(machine)
 	if err != nil {
 		info.Error = fmt.Sprintf("Errore recupero info: %v", err)
 		return info
 	}
 
-	// Parser dell'output dello script
 	info.Uptime = parseUptime2(output)
 	info.CPU = parseLoadAvg2(output)
 	info.MemTotal, info.MemUsed, info.MemFree = parseMemory2(output)
@@ -139,40 +235,6 @@ func GetRemoteSystemInfo(machine RemoteMachine) RemoteSystemInfo {
 
 // ==================== FUNZIONI DI PARSING (invariate) ====================
 
-// execTelnetCommand2 esegue un comando e restituisce l'output pulito
-// (mantenuta per compatibilità, ma non più usata)
-func execTelnetCommand2(conn net.Conn, cmd string) (string, error) {
-	conn.Write([]byte(cmd + "\n"))
-	time.Sleep(800 * time.Millisecond)
-	buf := make([]byte, 8192)
-	n, err := conn.Read(buf)
-	if err != nil {
-		return "", err
-	}
-	output := string(buf[:n])
-
-	lines := strings.Split(output, "\n")
-	var cleaned []string
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		if strings.Contains(line, cmd) {
-			continue
-		}
-		if strings.Contains(line, "$") || strings.Contains(line, "#") {
-			continue
-		}
-		if strings.Contains(line, "login:") || strings.Contains(line, "Password:") {
-			continue
-		}
-		cleaned = append(cleaned, line)
-	}
-	return strings.Join(cleaned, "\n"), nil
-}
-
-// parseUptime2 estrae l'uptime da "uptime"
 func parseUptime2(output string) string {
 	if strings.Contains(output, "up ") {
 		parts := strings.Split(output, "up ")
@@ -186,7 +248,6 @@ func parseUptime2(output string) string {
 	return "N/D"
 }
 
-// parseLoadAvg2 estrae il carico medio
 func parseLoadAvg2(output string) string {
 	if strings.Contains(output, "load average:") {
 		parts := strings.Split(output, "load average:")
@@ -197,7 +258,6 @@ func parseLoadAvg2(output string) string {
 	return "N/D"
 }
 
-// parseMemory2 estrae memoria totale, usata e libera da "free -m"
 func parseMemory2(output string) (string, string, string) {
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
@@ -215,7 +275,6 @@ func parseMemory2(output string) (string, string, string) {
 	return "N/D", "N/D", "N/D"
 }
 
-// parseDisk2 estrae spazio totale, usato e libero da "df -h /"
 func parseDisk2(output string) (string, string, string) {
 	lines := strings.Split(output, "\n")
 	for _, line := range lines {
