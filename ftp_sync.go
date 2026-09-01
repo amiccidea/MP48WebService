@@ -148,25 +148,42 @@ func shouldExcludeFromSync(path string, info os.FileInfo) bool {
 
 // uploadFileWithConn carica un file usando una connessione già aperta
 func uploadFileWithConn(conn *ftp.ServerConn, localPath, remotePath string) error {
+	// Normalizza il percorso remoto
+	remotePath = filepath.Clean(remotePath)
 	if !strings.HasPrefix(remotePath, "/") {
 		remotePath = "/" + remotePath
 	}
-	remotePath = filepath.Clean(remotePath)
-
-	log.Printf("📂 [DEBUG] upload: localPath=%s, remotePath=%s", localPath, remotePath)
 	dir := filepath.Dir(remotePath)
-	log.Printf("📁 [DEBUG] directory da creare/verificare: %s", dir)
+	fileName := filepath.Base(remotePath)
+
+	// 1. Crea la directory remota (se non esiste)
 	if err := createRemoteDir(conn, dir); err != nil {
-		log.Printf("Avviso creazione directory %s: %v", dir, err)
+		return fmt.Errorf("errore creazione directory %s: %v", dir, err)
 	}
 
+	// 2. Cambia nella directory di destinazione
+	if err := conn.ChangeDir(dir); err != nil {
+		return fmt.Errorf("errore cambio directory %s: %v", dir, err)
+	}
+
+	// 3. Elimina il file remoto se esiste (per evitare 553)
+	if _, err := conn.FileSize(fileName); err == nil {
+		// Il file esiste, proviamo a eliminarlo
+		if err := conn.Delete(fileName); err != nil {
+			// Se la cancellazione fallisce, logghiamo ma continuiamo (forse il file è in uso)
+			log.Printf("⚠️ Impossibile eliminare %s: %v", fileName, err)
+		} else {
+			log.Printf("🗑️ File remoto %s eliminato prima dell'upload", fileName)
+		}
+	}
+
+	// 4. Apri il file locale e caricalo con il solo nome
 	file, err := os.Open(localPath)
 	if err != nil {
 		return err
 	}
 	defer file.Close()
-
-	return conn.Stor(remotePath, file)
+	return conn.Stor(fileName, file)
 }
 
 // FTPUploadDirectory carica ricorsivamente una directory usando una sola connessione
