@@ -4,6 +4,7 @@
     "audit_log_dir": "/local/var/log/rtu/LogAppMp48",
     "cf_web_file": "/cf_web.txt",
     "points_file": "/home/andrea/Documenti/GitDea/test/cfweb/points.txt",
+    "analog_points_file":"/tmp/rsl_smm_m_temp_points.txt",
     "config_extensions": [
         ".rcd",
         ".rwb",
@@ -63,12 +64,16 @@
             "ssh": {
                 "port": 22,
                 "reboot_command": "sudo reboot",
-                "timeout_seconds": 10
+                "timeout_seconds": 10,
+                "script_path": "/home/andrea/Documenti/GitDea/test/reboot_ssh.sh",
+                "script_info_path": "/home/andrea/Documenti/GitDea/test/remote_info_ssh.sh"    
             },              
             "telnet": {
                 "port": 23,
                 "reboot_command": "sudo reboot",
-                "timeout_seconds": 10
+                "timeout_seconds": 10,
+                "script_path": "/home/andrea/Documenti/GitDea/test/reboot_remote.sh",
+                "script_info_path": "/home/andrea/Documenti/GitDea/test/remote_info.sh"
             }
         }
     ],

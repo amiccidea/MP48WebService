@@ -128,6 +128,24 @@ func createRemoteDir(conn *ftp.ServerConn, remoteDir string) error {
 	return nil
 }
 
+// shouldExcludeFromSync verifica se il percorso (relativo o assoluto) va saltato
+func shouldExcludeFromSync(path string, info os.FileInfo) bool {
+    // Escludi la directory del webservice e tutto il suo contenuto
+    if strings.Contains(path, "/MP48WebService") || strings.Contains(path, "MP48WebService") {
+        return true
+    }
+    // Escludi archivi .tar.gz (non servono sulle macchine remote)
+    if strings.HasSuffix(path, ".tar.gz") {
+        return true
+    }
+    // Escludi file temporanei o di log che potrebbero generare conflitti
+    if strings.HasSuffix(path, ".tmp") || strings.HasSuffix(path, ".lock") {
+        return true
+    }
+    // Puoi aggiungere altre regole qui
+    return false
+}
+
 // uploadFileWithConn carica un file usando una connessione già aperta
 func uploadFileWithConn(conn *ftp.ServerConn, localPath, remotePath string) error {
 	if !strings.HasPrefix(remotePath, "/") {
@@ -135,7 +153,9 @@ func uploadFileWithConn(conn *ftp.ServerConn, localPath, remotePath string) erro
 	}
 	remotePath = filepath.Clean(remotePath)
 
+	log.Printf("📂 [DEBUG] upload: localPath=%s, remotePath=%s", localPath, remotePath)
 	dir := filepath.Dir(remotePath)
+	log.Printf("📁 [DEBUG] directory da creare/verificare: %s", dir)
 	if err := createRemoteDir(conn, dir); err != nil {
 		log.Printf("Avviso creazione directory %s: %v", dir, err)
 	}
@@ -181,14 +201,20 @@ func FTPUploadDirectory(machine RemoteMachine, localDir, remoteDir string) error
 		}
 		relPath, _ := filepath.Rel(localDir, path)
 		remotePath := filepath.Join(remoteDir, relPath)
-
+        // APPLICA IL FILTRO
+        if shouldExcludeFromSync(path, info) {
+            log.Printf("⏭️ Escluso dalla sincronizzazione: %s", path)
+            return nil
+        }
 		if info.IsDir() {
 			log.Printf("📁 Creazione directory %s", remotePath)
 			if err := createRemoteDir(conn, remotePath); err != nil {
 				log.Printf("❌ Errore creazione directory %s: %v", remotePath, err)
 				lastErr = err
+				log.Printf("📤 [DEBUG01] localDir=%s, remoteDir=%s, macchina=%s, host=%s", localDir, remoteDir, machine.Name, machine.Host)
 				return nil
 			}
+			log.Printf("📤 [DEBUG02] localDir=%s, remoteDir=%s, macchina=%s, host=%s", localDir, remoteDir, machine.Name, machine.Host)
 			return nil
 		}
 

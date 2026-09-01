@@ -8,10 +8,6 @@ github.com/gorilla/sessions
 github.com/jlaffaye/ftp
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
-# github.com/reiver/go-oi v1.0.0
-github.com/reiver/go-oi
-# github.com/reiver/go-telnet v0.0.0-20250617105250-7da9ad70a2b2
-github.com/reiver/go-telnet
 # golang.org/x/crypto v0.53.0
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blowfish
