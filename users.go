@@ -84,6 +84,7 @@ func adminUserCreate(w http.ResponseWriter, r *http.Request) {
         PasswordChangedAt: now,
         Enabled:           true,
         LastModified:      now,
+        TOTPForceSetup: config.MFAEnabled, // <-- se MFA è abilitato, forzalo
     }
     saveUsers(currentDataDir)
 
@@ -222,6 +223,7 @@ func adminUserEditPost(w http.ResponseWriter, r *http.Request) {
         u.TOTPEnabled = false
         u.TOTPSecret = ""
         u.TOTPBackupCodes = []string{}
+        u.TOTPForceSetup = true // Forza l'utente a configurare nuovamente MFA al prossimo login
         u.LastModified = time.Now()
         saveUsers(currentDataDir)
 

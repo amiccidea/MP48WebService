@@ -52,6 +52,9 @@ func init() {
 	}
 	os.MkdirAll(currentDataDir, 0700)
 
+	// ═══════════════════════════════════════════════════
+	// 1. Carica la chiave DI CRITTOGRAFIA PRIMA DI TUTTO
+	// ═══════════════════════════════════════════════════
 	keyPath := config.EncryptionKeyPath
 	if keyPath == "" {
 		keyPath = filepath.Join(currentDataDir, "encryption.key")
@@ -62,6 +65,9 @@ func init() {
 		log.Fatal("Errore chiave crittografia:", err)
 	}
 
+	// ═══════════════════════════════════════════════════
+	// 2. Ora carica UTENTI, RUOLI e CREDENZIALI
+	// ═══════════════════════════════════════════════════
 	if err := loadUsers(currentDataDir); err != nil {
 		log.Printf("Errore caricamento utenti, inizializzo default: %v", err)
 		userMutex.Lock()
@@ -74,6 +80,9 @@ func init() {
 		saveRoles(currentDataDir)
 	}
 
+	// ═══════════════════════════════════════════════════
+	// 3. Carica le credenziali remote (ORA FUNZIONA!)
+	// ═══════════════════════════════════════════════════
 	loadRemoteCredentialsFromDir()
 }
 
@@ -117,6 +126,7 @@ func initDefaultUsers() {
 		PasswordChangedAt: now,
 		Enabled:           true,
 		LastModified:      now,
+		TOTPForceSetup:    false, // admin non forzato all'avvio
 	}
 	users["operatore"] = &User{
 		ID:                "operatore",
@@ -127,6 +137,7 @@ func initDefaultUsers() {
 		PasswordChangedAt: now,
 		Enabled:           true,
 		LastModified:      now,
+		TOTPForceSetup:    false,
 	}
 	users["guest"] = &User{
 		ID:                "guest",
@@ -137,6 +148,7 @@ func initDefaultUsers() {
 		PasswordChangedAt: now,
 		Enabled:           true,
 		LastModified:      now,
+		TOTPForceSetup:    false,
 	}
 }
 
@@ -149,7 +161,6 @@ func getLayoutData(r *http.Request, title, contentTemplate string) map[string]in
 	perms := getUserPermissions(username)
 	multiCPU := isMultiCPU()
 	token := csrf.Token(r)
-	log.Printf("DEBUG: Username=%s, IsAdmin=%v, IsMultiCPU=%v", username, isAdmin, multiCPU)
 	return map[string]interface{}{
 		"Username":        username,
 		"IsAdmin":         isAdmin,
@@ -159,7 +170,7 @@ func getLayoutData(r *http.Request, title, contentTemplate string) map[string]in
 		"IsMultiCPU":      multiCPU,
 		"CSRFToken":       token,
 		"CSRFField":       csrf.TemplateField(r),
-		"MFAEnabled":      config.MFAEnabled, // <-- NUOVO
+		"MFAEnabled":      config.MFAEnabled,
 	}
 }
 
@@ -308,6 +319,7 @@ func isSessionAbsoluteExpired(session *sessions.Session) bool {
 	return false
 }
 
+// ==================== AUTH MIDDLEWARE ====================
 func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		session, err := store.Get(r, "portal-session")
@@ -334,6 +346,24 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			http.Redirect(w, r, "/login", http.StatusFound)
 			return
 		}
+
+		// ═══════════════════════════════════════════════════════
+		// 🔒 CONTROLLO MFA FORZATO
+		// ═══════════════════════════════════════════════════════
+		username, _ := getUserContext(r)
+		if username != "" && config.MFAEnabled {
+			u := getUserByUsername(username)
+			if u != nil && u.TOTPForceSetup {
+				// L'utente deve configurare MFA
+				path := r.URL.Path
+				// Escludi le route che devono essere accessibili
+				if path != "/profile/mfa" && path != "/logout" && path != "/mfa-login" && !strings.HasPrefix(path, "/static/") {
+					http.Redirect(w, r, "/profile/mfa", http.StatusFound)
+					return
+				}
+			}
+		}
+
 		updateSessionActivity(session)
 		session.Save(r, w)
 		next(w, r)
@@ -383,7 +413,21 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// ✅ PRIORITÀ 2: MFA (solo se la password è valida E MFA è abilitato globalmente)
+		// ✅ PRIORITÀ 2: Se MFA è abilitato globalmente e l'utente deve forzare il setup
+		if config.MFAEnabled && u.TOTPForceSetup {
+			session, _ := store.Get(r, "portal-session")
+			session.Values["authenticated"] = true
+			session.Values["username"] = username
+			session.Values["is_admin"] = (u.Role == RoleAdmin)
+			session.Values["last_activity"] = time.Now().Unix()
+			session.Values["created_at"] = time.Now().Unix()
+			session.Save(r, w)
+			// Reindirizza alla pagina di setup MFA (senza chiedere il codice)
+			http.Redirect(w, r, "/profile/mfa", http.StatusFound)
+			return
+		}
+
+		// ✅ PRIORITÀ 3: MFA (solo se la password è valida E MFA è abilitato globalmente E l'utente ha MFA attivo)
 		if config.MFAEnabled && u.TOTPEnabled {
 			session, _ := store.Get(r, "portal-session")
 			session.Values["mfa_pending_user"] = username
@@ -393,7 +437,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// ✅ PRIORITÀ 3: Login completo (senza MFA o con MFA disabilitato)
+		// ✅ PRIORITÀ 4: Login completo (senza MFA o MFA disabilitato globalmente)
 		session, _ := store.Get(r, "portal-session")
 		session.Values["authenticated"] = true
 		session.Values["username"] = username

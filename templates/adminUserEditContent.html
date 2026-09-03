@@ -25,7 +25,9 @@
                     <input type="checkbox" name="reset_password"> Reset password (valore predefinito: username123) e obbliga il cambio al prossimo accesso
                 </label>
             </div>
-
+            {{if and $.MFAEnabled .User.TOTPForceSetup}}
+                <p style="color:#ffc107;">🔒 MFA obbligatorio: l'utente dovrà configurarlo al prossimo accesso.</p>
+            {{end}}
             {{if and $.MFAEnabled .User.TOTPEnabled}}
             <div style="margin:1rem 0; border-top:1px solid #ccc; padding-top:1rem;">
                 <label style="display:block; margin-bottom:0.5rem;">

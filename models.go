@@ -21,9 +21,10 @@ type User struct {
 	FailedLoginAttempts int       // numero di tentativi falliti consecutivi
 	LockedUntil         time.Time // timestamp di sblocco (zero = non bloccato)
 	// Campi per MFA
-	TOTPSecret      string   `json:"totp_secret,omitempty"`
-	TOTPEnabled     bool     `json:"totp_enabled"`
-	TOTPBackupCodes []string `json:"totp_backup_codes,omitempty"`
+	TOTPSecret      	string   `json:"totp_secret,omitempty"`
+	TOTPEnabled     	bool     `json:"totp_enabled"`
+	TOTPBackupCodes 	[]string `json:"totp_backup_codes,omitempty"`
+	TOTPForceSetup  	bool     `json:"totp_force_setup"`
 }
 
 type AppSettings struct {

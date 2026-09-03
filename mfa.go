@@ -194,6 +194,7 @@ func mfaEnableHandler(w http.ResponseWriter, r *http.Request) {
 			u.TOTPEnabled = true
 			backupCodes := generateBackupCodes(5)
 			u.TOTPBackupCodes = backupCodes
+			u.TOTPForceSetup = false
 			saveUsers(currentDataDir)
 			userMutex.Unlock()
 
