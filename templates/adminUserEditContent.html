@@ -19,17 +19,34 @@
             {{else}}
             <p><strong>⚠️ Questo utente è protetto e non può essere modificato o eliminato.</strong></p>
             {{end}}
+            
             <div style="margin:1rem 0;">
                 <label>
                     <input type="checkbox" name="reset_password"> Reset password (valore predefinito: username123) e obbliga il cambio al prossimo accesso
                 </label>
             </div>
+
+            {{if and $.MFAEnabled .User.TOTPEnabled}}
+            <div style="margin:1rem 0; border-top:1px solid #ccc; padding-top:1rem;">
+                <label style="display:block; margin-bottom:0.5rem;">
+                    <strong>Autenticazione a due fattori (MFA)</strong>
+                </label>
+                <button type="submit" name="action" value="reset_mfa" 
+                        onclick="return confirm('Sei sicuro di voler resettare MFA per {{.User.ID}}? Dovrà riconfigurarlo al prossimo accesso.')" 
+                        style="background:#ffc107; color:#000; border:none; padding:0.4rem 1rem; cursor:pointer;">
+                    🔄 Reset MFA
+                </button>
+                <span style="font-size:0.8rem; color:#666; margin-left:0.5rem;">(Disattiva e cancella il secret Google Authenticator)</span>
+            </div>
+            {{end}}
+
             {{if .User.LockedUntil}}
             <div style="margin: 1rem 0;">
                 <p>⚠️ Account bloccato fino a {{.User.LockedUntil.Format "02/01/2006 15:04:05"}}</p>
                 <button type="button" id="unlockBtn" style="background:#ffc107;">Sblocca account</button>
             </div>
             {{end}}
+            
             <div style="margin-top:1rem;">
                 <button type="submit" name="action" value="save">Salva</button>
                 {{if not .IsProtected}}

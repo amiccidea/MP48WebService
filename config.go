@@ -101,7 +101,8 @@ type Config struct {
 	Mp48Type                 string          `json:"mp48_type"`
 	ExtensionFilesConfig     []string        `json:"extension_files_config"`
 	RemoteMachines           []RemoteMachine `json:"remote_machines"`
-	MFAEnabled 				 bool 			 `json:"mfa_enabled"` // <-- NUOVO
+	MFAEnabled 				 bool 			 `json:"mfa_enabled"`
+	MFAIssuer  				 string 		 `json:"mfa_issuer"`
 }
 
 func initConfig() {

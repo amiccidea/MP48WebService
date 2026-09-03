@@ -17,17 +17,23 @@ import (
 
 // GenerateTOTPSecret genera un nuovo secret TOTP per l'utente
 func GenerateTOTPSecret(username string) (string, string, error) {
-	key, err := totp.Generate(totp.GenerateOpts{
-		Issuer:      "MP48WebService",
-		AccountName: username,
-		Period:      30,
-		Digits:      6,
-		Algorithm:   otp.AlgorithmSHA1,
-	})
-	if err != nil {
-		return "", "", err
-	}
-	return key.Secret(), key.URL(), nil
+    // Usa l'issuer personalizzato dal config, o un default
+    issuer := config.MFAIssuer
+    if issuer == "" {
+        issuer = "MP48WebService" // default per retrocompatibilità
+    }
+
+    key, err := totp.Generate(totp.GenerateOpts{
+        Issuer:      issuer,
+        AccountName: username,
+        Period:      30,
+        Digits:      6,
+        Algorithm:   otp.AlgorithmSHA1,
+    })
+    if err != nil {
+        return "", "", err
+    }
+    return key.Secret(), key.URL(), nil
 }
 
 // VerifyTOTP verifica il codice TOTP inserito dall'utente

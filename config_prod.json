@@ -83,5 +83,7 @@
     "session_secret": "cambia-questa-chiave-segreta-con-almeno-32-caratteri",
     "tls_cert_file": "",
     "tls_key_file": "",
-    "upload_dir": "./uploads"
+    "upload_dir": "./uploads",
+    "mfa_enabled": true,
+    "mfa_issuer": "MP48WS@ClienteA"
 }
