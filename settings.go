@@ -26,6 +26,7 @@ func adminSettingsPage(w http.ResponseWriter, r *http.Request) {
 		IsMultiCPU      bool
 		CSRFField       template.HTML
 		CSRFToken       string
+		MFAEnabled		bool
 	}{
 		Username:        username,
 		IsAdmin:         true,
@@ -36,6 +37,7 @@ func adminSettingsPage(w http.ResponseWriter, r *http.Request) {
 		IsMultiCPU:      isMultiCPU(),
 		CSRFField:       csrf.TemplateField(r),
 		CSRFToken:       csrf.Token(r),
+		MFAEnabled:      config.MFAEnabled,
 	}
 	tmpl.ExecuteTemplate(w, "layout.html", data)
 }

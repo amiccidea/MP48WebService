@@ -1,0 +1,22 @@
+{{define "mfaContent"}}
+<h1>🔐 Autenticazione a due fattori (MFA)</h1>
+<div class="card-modern">
+    <div class="card-header">Stato MFA</div>
+    <div class="card-body">
+        {{if .TOTPEnabled}}
+            <p>✅ MFA è <strong>attivo</strong> per il tuo account.</p>
+            <form method="POST" action="/api/mfa/disable">
+                {{ .CSRFField }}
+                <button type="submit" class="button danger" onclick="return confirm('Disattivare MFA? Perderai l\'accesso se non hai i codici di backup.')">Disattiva MFA</button>
+            </form>
+        {{else}}
+            <p>❌ MFA non è attivo. Clicca sul pulsante per configurarlo.</p>
+            <form method="POST" action="/profile/mfa">
+                {{ .CSRFField }}
+                <input type="hidden" name="action" value="generate">
+                <button type="submit" class="button">Configura MFA</button>
+            </form>
+        {{end}}
+    </div>
+</div>
+{{end}}

@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Verifica MFA - RTU Portal</title>
+    <link rel="stylesheet" href="/static/css/custom.css">
+    {{ if .CSRFToken }}
+    <meta name="csrf-token" content="{{ .CSRFToken }}">
+    {{ end }}
+    <style>
+        body {
+            background: var(--sap-bg-page);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 2rem;
+        }
+        .mfa-container {
+            max-width: 450px;
+            width: 100%;
+        }
+        .logo {
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+        .logo img {
+            max-width: 180px;
+            height: auto;
+        }
+        .error {
+            color: #dc3545;
+            margin-top: 1rem;
+            text-align: center;
+            font-size: 0.9rem;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 1.5rem;
+            font-size: 0.8rem;
+            color: var(--sap-text-secondary);
+        }
+        form {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+        label {
+            font-weight: 500;
+            margin-bottom: 0.2rem;
+        }
+        .input-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        .input-wrapper input {
+            width: 100%;
+            padding: 0.5rem 0.75rem;
+            box-sizing: border-box;
+            text-align: center;
+            font-size: 1.5rem;
+            letter-spacing: 0.5rem;
+        }
+        button {
+            width: 100%;
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="mfa-container">
+        <div class="logo">
+            <img src="/static/images/logoMp48.png" alt="Logo MP48">
+        </div>
+        <div class="card-modern">
+            <div class="card-header">🔑 Verifica a due fattori</div>
+            <div class="card-body">
+                <p style="margin-bottom: 1rem;">Inserisci il codice a 6 cifre generato da Google Authenticator.</p>
+                {{if .Error}}
+                    <div class="error">❌ {{.Error}}</div>
+                {{end}}
+                <form method="POST" action="/api/mfa-login-verify">
+                    {{ .CSRFField }}
+                    <div>
+                        <label for="code">Codice a 6 cifre</label>
+                        <div class="input-wrapper">
+                            <input type="text" name="code" id="code" pattern="[0-9]{6}" maxlength="6" required autofocus>
+                        </div>
+                    </div>
+                    <button type="submit">Verifica</button>
+                </form>
+                <p style="margin-top:1rem; text-align:center;">
+                    <a href="/login" style="color: var(--sap-text-secondary);">Torna al login</a>
+                </p>
+            </div>
+        </div>
+        <div class="footer">
+            <small>Sistema di telecontrollo – hardware embedded</small>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('code').focus();
+        });
+    </script>
+</body>
+</html>

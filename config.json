@@ -84,5 +84,6 @@
     "session_secret": "cambia-questa-chiave-segreta-con-almeno-32-caratteri",
     "tls_cert_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2.pem",
     "tls_key_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2-key.pem",
-    "upload_dir": "./uploads"
+    "upload_dir": "./uploads",
+    "mfa_enabled": true
 }

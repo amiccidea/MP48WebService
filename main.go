@@ -3,7 +3,6 @@ package main
 import (
 	"log"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 
@@ -21,20 +20,8 @@ func isMultiCPU() bool {
 }
 
 func main() {
-	// Serve file statici
-	//	staticSub, err := fs.Sub(staticFS, "static")
-	//	if err != nil {
-	//		log.Fatal("Errore nel servire file statici:", err)
-	//	}
-	//	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticSub))))
-
-	// --- Caricamento file statici ---
-	staticDir := "static"
-	if _, err := os.Stat(staticDir); err == nil {
-		http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
-	} else {
-		log.Fatal("Directory static non trovata!")
-	}
+	// Serve file statici dalla directory "static"
+	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("static"))))
 
 	// ---------- RATE LIMITER ----------
 	// 5 tentativi al minuto per login
@@ -132,6 +119,24 @@ func main() {
 	http.HandleFunc("/api/sync-remotes", authMiddleware(adminMiddleware(syncAllRemotesHandler)))
 	http.HandleFunc("/api/sync-events", authMiddleware(adminMiddleware(syncEventsHandler)))
 	http.HandleFunc("/api/sync-audit-log", authMiddleware(adminMiddleware(SyncAuditLogNowHandler)))
+
+	// ==================== MFA ROUTES ====================
+	// MFA Login (pagina standalone - pubblica, gestita da sessioni)
+	http.HandleFunc("/mfa-login", mfaLoginPageHandler)
+	// Profilo MFA (protetto)
+	http.HandleFunc("/profile/mfa", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			mfaPageHandler(w, r)
+		} else if r.Method == http.MethodPost {
+			mfaEnableHandler(w, r)
+		} else {
+			http.Error(w, "Metodo non consentito", http.StatusMethodNotAllowed)
+		}
+	}))
+	// Disattivazione MFA (protetto)
+	http.HandleFunc("/api/mfa/disable", authMiddleware(mfaDisableHandler))
+	// Verifica MFA durante login (pubblica, gestita da sessioni)
+	http.HandleFunc("/api/mfa-login-verify", mfaLoginVerifyHandler)
 
 	// Redirect home
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

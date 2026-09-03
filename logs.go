@@ -34,6 +34,7 @@ func logsPageHandler(w http.ResponseWriter, r *http.Request) {
 		IsMultiCPU      bool
 		CSRFField       template.HTML
 		CSRFToken       string
+		MFAEnabled      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -43,6 +44,7 @@ func logsPageHandler(w http.ResponseWriter, r *http.Request) {
 		IsMultiCPU:      isMultiCPU(),
 		CSRFField:       csrf.TemplateField(r),
 		CSRFToken:       csrf.Token(r),
+		MFAEnabled:      config.MFAEnabled,
 	}
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
 		log.Printf("❌ Errore rendering logs history: %v", err)
@@ -63,7 +65,7 @@ func scanAllLogs() ([]LogFileInfo, error) {
 		}
 	}
 
-	// Aggiungi sempre l'audit log directory (se configurata)
+	// 🔄 Aggiungi sempre l'audit log directory (se configurata)
 	if config.AuditLogDir != "" {
 		alreadyIncluded := false
 		for _, cat := range config.LogCategories {
@@ -183,7 +185,7 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 		allLogs = filtered
 	}
 
-	// Ordina per data decrescente (dal più recente al più vecchio)
+	// 🔽 ORDINA PER DATA DECRESCENTE (dal più recente al più vecchio)
 	sort.Slice(allLogs, func(i, j int) bool {
 		return allLogs[i].ModTimeUnix > allLogs[j].ModTimeUnix
 	})

@@ -1,0 +1,22 @@
+{{define "mfaConfigureContent"}}
+<h1>📱 Configura MFA</h1>
+<div class="card-modern">
+    <div class="card-header">Scansiona il QR code con Google Authenticator</div>
+    <div class="card-body">
+        <p>Scarica Google Authenticator sul tuo telefono e scansiona il QR code qui sotto.</p>
+        <div style="text-align:center; margin:1rem 0;">
+            <img src="data:image/png;base64,{{.QRCodeData}}" alt="QR Code" style="max-width:256px;">
+        </div>
+        <p><strong>Secret:</strong> <code>{{.Secret}}</code> (puoi inserirlo manualmente se non puoi scansionare)</p>
+        <form method="POST" action="/profile/mfa">
+            {{ .CSRFField }}
+            <input type="hidden" name="action" value="verify">
+            <div style="margin:1rem 0;">
+                <label for="code">Inserisci il codice a 6 cifre da Google Authenticator:</label>
+                <input type="text" name="code" id="code" pattern="[0-9]{6}" maxlength="6" required autofocus>
+            </div>
+            <button type="submit" class="button">Verifica e attiva</button>
+        </form>
+    </div>
+</div>
+{{end}}

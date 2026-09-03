@@ -460,6 +460,7 @@ func rebootPageHandler(w http.ResponseWriter, r *http.Request) {
 		IsMultiCPU      bool
 		CSRFField       template.HTML
 		CSRFToken       string
+		MFAEnabled      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -470,6 +471,7 @@ func rebootPageHandler(w http.ResponseWriter, r *http.Request) {
 		IsMultiCPU:      isMultiCPU(),
 		CSRFField:       csrf.TemplateField(r),
 		CSRFToken:       csrf.Token(r),
+		MFAEnabled:      config.MFAEnabled,
 	}
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
 		log.Printf("❌ Errore rendering reboot page: %v", err)

@@ -1,6 +1,10 @@
+# github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc
+github.com/boombuler/barcode
+github.com/boombuler/barcode/qr
+github.com/boombuler/barcode/utils
 # github.com/gorilla/csrf v1.7.1
 github.com/gorilla/csrf
-# github.com/gorilla/securecookie v1.1.2
+# github.com/gorilla/securecookie v1.1.1
 github.com/gorilla/securecookie
 # github.com/gorilla/sessions v1.2.1
 github.com/gorilla/sessions
@@ -8,6 +12,15 @@ github.com/gorilla/sessions
 github.com/jlaffaye/ftp
 # github.com/pkg/errors v0.9.1
 github.com/pkg/errors
+# github.com/pquerna/otp v1.5.0
+github.com/pquerna/otp
+github.com/pquerna/otp/hotp
+github.com/pquerna/otp/internal
+github.com/pquerna/otp/totp
+# github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
+github.com/skip2/go-qrcode
+github.com/skip2/go-qrcode/bitset
+github.com/skip2/go-qrcode/reedsolomon
 # golang.org/x/crypto v0.53.0
 golang.org/x/crypto/bcrypt
 golang.org/x/crypto/blowfish

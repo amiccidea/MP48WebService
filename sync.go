@@ -49,6 +49,7 @@ func syncPageHandler(w http.ResponseWriter, r *http.Request) {
 		SyncLogPath     string
 		CSRFField       template.HTML
 		CSRFToken       string
+		MFAEnabled		bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -59,6 +60,7 @@ func syncPageHandler(w http.ResponseWriter, r *http.Request) {
 		SyncLogPath:     syncLogPath,
 		CSRFField:       csrf.TemplateField(r),
 		CSRFToken:       csrf.Token(r),
+		MFAEnabled:      config.MFAEnabled,
 	}
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
 		log.Printf("❌ Errore rendering sync page: %v", err)

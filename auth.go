@@ -44,41 +44,32 @@ func init() {
 			return string(b)
 		},
 	}
-	//tmpl = template.Must(template.New("").Funcs(funcMap).ParseFS(templateFS, "templates/*.html"))
-	// --- Caricamento template ---
-	tmpl = template.New("").Funcs(funcMap)
-	_, err := tmpl.ParseGlob("templates/*.html")
-	if err != nil {
-		log.Fatal("Errore caricamento template:", err)
-	}
+	tmpl = template.Must(template.New("").Funcs(funcMap).ParseGlob("templates/*.html"))
+
 	currentDataDir = config.DataDir
 	if currentDataDir == "" {
 		currentDataDir = "./data"
 	}
 	os.MkdirAll(currentDataDir, 0700)
 
-	// ---------- PATCH: chiave crittografia da percorso esterno ----------
 	keyPath := config.EncryptionKeyPath
 	if keyPath == "" {
-		// Fallback alla vecchia posizione se non configurato
 		keyPath = filepath.Join(currentDataDir, "encryption.key")
 	}
-	//var err error
+	var err error
 	encryptionKey, err = loadOrGenerateKey(keyPath)
 	if err != nil {
 		log.Fatal("Errore chiave crittografia:", err)
 	}
-	// --------------------------------------------------------------------
-	err = loadUsers(currentDataDir)
-	if err != nil {
+
+	if err := loadUsers(currentDataDir); err != nil {
 		log.Printf("Errore caricamento utenti, inizializzo default: %v", err)
 		userMutex.Lock()
 		initDefaultUsers()
 		saveUsers(currentDataDir)
 		userMutex.Unlock()
 	}
-	err = loadRoles(currentDataDir)
-	if err != nil {
+	if err := loadRoles(currentDataDir); err != nil {
 		log.Printf("Errore caricamento ruoli, uso default: %v", err)
 		saveRoles(currentDataDir)
 	}
@@ -168,6 +159,7 @@ func getLayoutData(r *http.Request, title, contentTemplate string) map[string]in
 		"IsMultiCPU":      multiCPU,
 		"CSRFToken":       token,
 		"CSRFField":       csrf.TemplateField(r),
+		"MFAEnabled":      config.MFAEnabled, // <-- NUOVO
 	}
 }
 
@@ -175,51 +167,40 @@ func authenticateLocal(username, password string) bool {
 	userMutex.Lock()
 	defer userMutex.Unlock()
 
-	log.Printf("🔍 Tentativo autenticazione per %s", username)
-
 	u := getUserByUsername(username)
 	if u == nil {
-		log.Printf("❌ Utente %s non trovato", username)
+		log.Printf("Tentativo di accesso per utente inesistente: %s", username)
 		WriteAuditLog("login_failed", username, "Tentativo di accesso per utente inesistente")
 		return false
 	}
-	log.Printf("👤 Utente %s trovato, enabled=%v, locked=%v", username, u.Enabled, u.LockedUntil)
 
 	if !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
-		log.Printf("🔒 Utente %s bloccato fino a %s", username, u.LockedUntil.Format(time.RFC3339))
+		log.Printf("Accesso negato per utente bloccato: %s (bloccato fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
 		WriteAuditLog("login_failed", username, "Accesso negato per utente bloccato")
 		return false
 	}
 
 	if !u.Enabled {
-		log.Printf("🚫 Utente %s disabilitato", username)
+		log.Printf("Tentativo di accesso per utente disabilitato: %s", username)
 		WriteAuditLog("login_failed", username, "Tentativo di accesso per utente disabilitato")
 		return false
 	}
 
-	// Migrazione password plaintext -> bcrypt
 	ok := false
 	if !strings.HasPrefix(u.PasswordHash, "$2a$") && !strings.HasPrefix(u.PasswordHash, "$2b$") {
 		if u.PasswordHash == password {
-			log.Printf("🔄 Migrazione password plaintext -> bcrypt per %s", username)
 			newHash, err := hashPassword(password)
 			if err == nil {
 				u.PasswordHash = newHash
 				u.PasswordHistory = []string{}
 				u.LastModified = time.Now()
 				ok = true
-			} else {
-				log.Printf("❌ Errore hash password per %s: %v", username, err)
+				log.Printf("Migrata password di %s a bcrypt", username)
 			}
 		}
 	} else {
 		err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password))
 		ok = err == nil
-		if err != nil {
-			log.Printf("❌ Password errata per %s: %v", username, err)
-		} else {
-			log.Printf("✅ Password corretta per %s", username)
-		}
 	}
 
 	if ok {
@@ -227,18 +208,18 @@ func authenticateLocal(username, password string) bool {
 		u.LockedUntil = time.Time{}
 		saveUsers(currentDataDir)
 		WriteAuditLog("login_success", username, "Login riuscito")
-		log.Printf("✅ Login riuscito per %s", username)
+		log.Printf("Login riuscito per %s", username)
 		return true
 	}
 
 	u.FailedLoginAttempts++
-	log.Printf("❌ Tentativo fallito per %s (%d/5)", username, u.FailedLoginAttempts)
 	WriteAuditLog("login_failed", username, "Tentativo di accesso fallito")
+	log.Printf("Tentativo di accesso fallito per %s (%d/5)", username, u.FailedLoginAttempts)
 
 	if u.FailedLoginAttempts >= 5 {
 		u.LockedUntil = time.Now().Add(15 * time.Minute)
-		log.Printf("🔒 Utente %s bloccato per 15 minuti", username)
 		WriteAuditLog("login_failed", username, "Account bloccato per 15 minuti")
+		log.Printf("Account %s bloccato per 15 minuti (fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
 	}
 	saveUsers(currentDataDir)
 	return false
@@ -370,7 +351,7 @@ func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-// ==================== LOGIN HANDLER (CORRETTO) ====================
+// ==================== LOGIN HANDLER ====================
 func loginHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
 		data := map[string]interface{}{
@@ -380,10 +361,10 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		tmpl.ExecuteTemplate(w, "login.html", data)
 		return
 	}
+
 	username := strings.TrimSpace(r.FormValue("username"))
 	password := r.FormValue("password")
 
-	// LOG DI DEBUG
 	log.Printf("🔍 Login tentativo per %s", username)
 
 	if authenticateLocal(username, password) {
@@ -392,6 +373,8 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			tmpl.ExecuteTemplate(w, "login.html", map[string]string{"error": "Credenziali non valide"})
 			return
 		}
+
+		// ✅ PRIORITÀ 1: Password scaduta o cambio forzato
 		if u.MustChangePwd || isPasswordExpired(u) {
 			session, _ := store.Get(r, "portal-session")
 			session.Values["pending_user"] = username
@@ -400,7 +383,17 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Sessione (senza rigenerazione per ora)
+		// ✅ PRIORITÀ 2: MFA (solo se la password è valida E MFA è abilitato globalmente)
+		if config.MFAEnabled && u.TOTPEnabled {
+			session, _ := store.Get(r, "portal-session")
+			session.Values["mfa_pending_user"] = username
+			session.Values["mfa_pending_authenticated"] = false
+			session.Save(r, w)
+			http.Redirect(w, r, "/mfa-login", http.StatusFound)
+			return
+		}
+
+		// ✅ PRIORITÀ 3: Login completo (senza MFA o con MFA disabilitato)
 		session, _ := store.Get(r, "portal-session")
 		session.Values["authenticated"] = true
 		session.Values["username"] = username
@@ -416,6 +409,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Login fallito
 	u := getUserByUsername(username)
 	if u != nil && !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
 		tmpl.ExecuteTemplate(w, "login.html", map[string]string{
@@ -520,11 +514,28 @@ func changePasswordPost(w http.ResponseWriter, r *http.Request) {
 	}(username)
 
 	delete(session.Values, "pending_user")
+
+	// ═══════════════════════════════════════════════════════
+	// 🔥 Se MFA è abilitato globalmente e l'utente ha MFA attivo,
+	//    reindirizza alla verifica
+	// ═══════════════════════════════════════════════════════
+	if config.MFAEnabled && u != nil && u.TOTPEnabled {
+		session.Values["mfa_pending_user"] = username
+		session.Values["mfa_pending_authenticated"] = false
+		session.Save(r, w)
+		http.Redirect(w, r, "/mfa-login", http.StatusFound)
+		return
+	}
+
+	// Se MFA non è attivo o disabilitato, autentica normalmente
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
 	session.Values["is_admin"] = (u.Role == RoleAdmin)
-	session.Values["last_activity"] = time.Now().Unix()
+	now := time.Now().Unix()
+	session.Values["last_activity"] = now
+	session.Values["created_at"] = now
 	session.Save(r, w)
+
 	http.Redirect(w, r, "/alarms", http.StatusFound)
 }
 

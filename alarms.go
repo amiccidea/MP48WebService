@@ -32,6 +32,7 @@ func alarmsHandler(w http.ResponseWriter, r *http.Request) {
 		IsMultiCPU      bool
 		CSRFField       template.HTML
 		CSRFToken       string
+		MFAEnabled      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin, // ✅ usato!
@@ -42,6 +43,7 @@ func alarmsHandler(w http.ResponseWriter, r *http.Request) {
 		IsMultiCPU:      isMultiCPU(),
 		CSRFField:       csrf.TemplateField(r),
 		CSRFToken:       csrf.Token(r), // ✅ aggiunto
+		MFAEnabled:      config.MFAEnabled,
 	}
 
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
