@@ -42,7 +42,7 @@
             </div>
             {{end}}
 
-            {{if .User.LockedUntil}}
+            {{if .IsLocked}}
             <div style="margin: 1rem 0;">
                 <p>⚠️ Account bloccato fino a {{.User.LockedUntil.Format "02/01/2006 15:04:05"}}</p>
                 <button type="button" id="unlockBtn" style="background:#ffc107;">Sblocca account</button>

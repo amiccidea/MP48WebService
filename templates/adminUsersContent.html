@@ -20,6 +20,9 @@
             <div><button type="submit">Crea utente</button></div>
         </form>
         <small>La password iniziale sarà: <strong>username123</strong> (utente dovrà cambiarla al primo accesso)</small>
+        {{if .MFAEnabled}}
+        <div style="margin-top:0.5rem; color:#ffc107;">🔒 MFA abilitato globalmente: i nuovi utenti dovranno configurarlo al primo accesso.</div>
+        {{end}}
     </div>
 </div>
 
@@ -33,6 +36,7 @@
                 <th>Ruolo</th>
                 <th>Abilitato</th>
                 <th>Password scaduta?</th>
+                <th>MFA</th>
                 <th>Ultima modifica</th>
                 <th>Azioni</th>
             </tr>
@@ -44,6 +48,16 @@
                 <td>{{.Role}}</td>
                 <td>{{if .Enabled}}✅{{else}}❌{{end}}</td>
                 <td>{{if .MustChangePwd}}Sì{{else}}No{{end}}</td>
+                <td>
+                    {{if .TOTPEnabled}}
+                        <span style="color:#28a745;">✅ Attivo</span>
+                    {{else}}
+                        <span style="color:#6c757d;">❌ Non attivo</span>
+                        {{if and $.MFAEnabled .TOTPForceSetup}}
+                            <span style="color:#ffc107;">(obbligatorio)</span>
+                        {{end}}
+                    {{end}}
+                </td>
                 <td>{{.LastModified.Format "02/01/2006 15:04:05"}}</td>
                 <td>
                     <a href="/admin/users/edit?username={{.ID}}">✏️ Modifica</a>
