@@ -85,6 +85,12 @@
     "tls_cert_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2.pem",
     "tls_key_file": "/home/andrea/Documenti/GitDea/Certificati/localhost+2-key.pem",
     "upload_dir": "./uploads",
+    "company_info": {
+        "ragione_sociale": "MP48 S.r.l.",
+        "piva": "IT01234567890",
+        "geolocalizzazione": "43.754518876960276, 13.096365140539886",
+        "indirizzo": "Via tipiacerebbesaperla, 1 - 61037 Mondofo(PU)"
+    },    
     "mfa_enabled": true,
     "mfa_issuer": "MP48WS@DEA_NrContratto"
 }

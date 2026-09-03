@@ -26,6 +26,7 @@ func main() {
 	// ---------- RATE LIMITER ----------
 	// 5 tentativi al minuto per login
 	loginLimiter := NewRateLimiter(5, 1*time.Minute)
+	mfaLimiter := NewRateLimiter(5, 1*time.Minute) 
 	// 10 tentativi al minuto per creazione utenti
 	createUserLimiter := NewRateLimiter(10, 1*time.Minute)
 
@@ -136,8 +137,8 @@ func main() {
 	// Disattivazione MFA (protetto)
 	http.HandleFunc("/api/mfa/disable", authMiddleware(mfaDisableHandler))
 	// Verifica MFA durante login (pubblica, gestita da sessioni)
-	http.HandleFunc("/api/mfa-login-verify", mfaLoginVerifyHandler)
-
+	http.HandleFunc("/api/mfa-login-verify", RateLimitMiddleware(mfaLimiter, mfaLoginVerifyHandler))
+	http.HandleFunc("/api/mfa/regenerate-backup", authMiddleware(mfaRegenerateBackupHandler))
 	// Redirect home
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/alarms", http.StatusFound)

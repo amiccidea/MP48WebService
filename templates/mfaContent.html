@@ -5,10 +5,24 @@
     <div class="card-body">
         {{if .TOTPEnabled}}
             <p>✅ MFA è <strong>attivo</strong> per il tuo account.</p>
-            <form method="POST" action="/api/mfa/disable">
+            
+            <!-- Form per disattivare MFA con password -->
+            <form method="POST" action="/api/mfa/disable" id="mfaDisableForm" style="margin-top:1rem;">
                 {{ .CSRFField }}
-                <button type="submit" class="button danger" onclick="return confirm('Disattivare MFA? Perderai l\'accesso se non hai i codici di backup.')">Disattiva MFA</button>
+                <div style="margin-bottom:0.5rem;">
+                    <label for="disable_password">Inserisci la password per confermare la disattivazione:</label>
+                    <input type="password" id="disable_password" name="password" required style="width:100%; max-width:300px; display:block; margin-top:0.3rem;">
+                </div>
+                <button type="submit" class="button danger" onclick="return confirm('Disattivare MFA? Perderai l\'accesso se non hai i codici di backup.')" style="background:#dc3545; color:white; border:none; padding:0.4rem 1rem; cursor:pointer;">
+                    Disattiva MFA
+                </button>
             </form>
+
+            <!-- Pulsante per rigenerare codici di backup -->
+            <div style="margin-top:1rem; border-top:1px solid #eee; padding-top:1rem;">
+                <button id="regenerateBackupBtn" class="button" style="background:#ffc107; color:#000;">🔄 Rigenera codici di backup</button>
+                <div id="backupCodesContainer" style="margin-top:0.5rem; display:none;"></div>
+            </div>
         {{else}}
             <p>❌ MFA non è attivo. Clicca sul pulsante per configurarlo.</p>
             <form method="POST" action="/profile/mfa">
@@ -19,4 +33,48 @@
         {{end}}
     </div>
 </div>
+
+<script>
+    function getCSRFToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
+    }
+
+    // Rigenerazione codici di backup
+    document.getElementById('regenerateBackupBtn')?.addEventListener('click', async function() {
+        if (!confirm('⚠️ ATTENZIONE: rigenerare i codici di backup invaliderà quelli precedenti. Proseguire?')) {
+            return;
+        }
+        try {
+            const resp = await fetch('/api/mfa/regenerate-backup', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-Token': getCSRFToken()
+                }
+            });
+            if (!resp.ok) {
+                const text = await resp.text();
+                alert('Errore: ' + text);
+                return;
+            }
+            const data = await resp.json();
+            // Mostra i nuovi codici di backup
+            const container = document.getElementById('backupCodesContainer');
+            let html = '<div style="background:#f0f0f0; padding:1rem; border-radius:4px; margin-top:0.5rem;">';
+            html += '<p><strong>✅ Nuovi codici di backup generati. Conservali in un luogo sicuro:</strong></p>';
+            html += '<ul style="list-style:none; padding:0;">';
+            data.backup_codes.forEach(code => {
+                html += `<li style="padding:0.3rem 0; font-family:monospace; font-size:1.1rem;">${code}</li>`;
+            });
+            html += '</ul>';
+            html += '<p style="font-size:0.8rem; color:#666;">⚠️ Questi codici sostituiscono i precedenti. Ogni codice può essere usato una sola volta.</p>';
+            html += '</div>';
+            container.innerHTML = html;
+            container.style.display = 'block';
+        } catch (err) {
+            alert('Errore di rete: ' + err);
+        }
+    });
+</script>
 {{end}}

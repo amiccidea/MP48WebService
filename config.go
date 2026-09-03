@@ -59,7 +59,12 @@ type RemoteCPUConfig struct {
 	FTP    FTPConfig    `json:"ftp"`
 	Telnet TelnetConfig `json:"telnet"`
 }
-
+type CompanyInfo struct {
+    RagioneSociale      string `json:"ragione_sociale"`
+    Piva                string `json:"piva"`
+    Geolocalizzazione   string `json:"geolocalizzazione"`
+    Indirizzo           string `json:"indirizzo"`
+}
 type Config struct {
 	LDAPServer               string          `json:"ldap_server"`
 	BaseDN                   string          `json:"base_dn"`
@@ -101,6 +106,7 @@ type Config struct {
 	Mp48Type                 string          `json:"mp48_type"`
 	ExtensionFilesConfig     []string        `json:"extension_files_config"`
 	RemoteMachines           []RemoteMachine `json:"remote_machines"`
+	CompanyInfo 			 CompanyInfo 	 `json:"company_info"`
 	MFAEnabled 				 bool 			 `json:"mfa_enabled"`
 	MFAIssuer  				 string 		 `json:"mfa_issuer"`
 }

@@ -387,6 +387,7 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 		data := map[string]interface{}{
 			"CSRFField": csrf.TemplateField(r),
 			"CSRFToken": csrf.Token(r),
+			"CompanyInfo": config.CompanyInfo,
 		}
 		tmpl.ExecuteTemplate(w, "login.html", data)
 		return

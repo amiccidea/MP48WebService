@@ -4,36 +4,39 @@ import (
 	"crypto/rand"
 	"encoding/base32"
 	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"html/template"
 	"log"
 	"net/http"
+	"path/filepath"
 	"time"
 
 	"github.com/gorilla/csrf"
 	"github.com/pquerna/otp"
 	"github.com/pquerna/otp/totp"
 	"github.com/skip2/go-qrcode"
+	"golang.org/x/crypto/bcrypt"
 )
 
 // GenerateTOTPSecret genera un nuovo secret TOTP per l'utente
 func GenerateTOTPSecret(username string) (string, string, error) {
-    // Usa l'issuer personalizzato dal config, o un default
-    issuer := config.MFAIssuer
-    if issuer == "" {
-        issuer = "MP48WebService" // default per retrocompatibilità
-    }
+	issuer := config.MFAIssuer
+	if issuer == "" {
+		issuer = "MP48WebService"
+	}
 
-    key, err := totp.Generate(totp.GenerateOpts{
-        Issuer:      issuer,
-        AccountName: username,
-        Period:      30,
-        Digits:      6,
-        Algorithm:   otp.AlgorithmSHA1,
-    })
-    if err != nil {
-        return "", "", err
-    }
-    return key.Secret(), key.URL(), nil
+	key, err := totp.Generate(totp.GenerateOpts{
+		Issuer:      issuer,
+		AccountName: username,
+		Period:      30,
+		Digits:      6,
+		Algorithm:   otp.AlgorithmSHA1,
+	})
+	if err != nil {
+		return "", "", err
+	}
+	return key.Secret(), key.URL(), nil
 }
 
 // VerifyTOTP verifica il codice TOTP inserito dall'utente
@@ -192,9 +195,9 @@ func mfaEnableHandler(w http.ResponseWriter, r *http.Request) {
 			userMutex.Lock()
 			u.TOTPSecret = secret
 			u.TOTPEnabled = true
+			u.TOTPForceSetup = false // Rimuovi il flag di forzatura
 			backupCodes := generateBackupCodes(5)
 			u.TOTPBackupCodes = backupCodes
-			u.TOTPForceSetup = false
 			saveUsers(currentDataDir)
 			userMutex.Unlock()
 
@@ -212,7 +215,7 @@ func mfaEnableHandler(w http.ResponseWriter, r *http.Request) {
 				CSRFField       template.HTML
 				CSRFToken       string
 				BackupCodes     []string
-				MFAEnabled		bool
+				MFAEnabled      bool
 			}{
 				Username:        username,
 				IsAdmin:         isAdmin,
@@ -226,6 +229,17 @@ func mfaEnableHandler(w http.ResponseWriter, r *http.Request) {
 				MFAEnabled:      config.MFAEnabled,
 			}
 			tmpl.ExecuteTemplate(w, "layout.html", data)
+
+			// Sincronizza il file users.enc sulle macchine remote
+			go func(userName string) {
+				usersPath := filepath.Join(currentDataDir, "users.enc")
+				if err := SyncFileToAllRemotes(usersPath); err != nil {
+					log.Printf("❌ Errore sincronizzazione utenti (attivazione MFA per %s): %v", userName, err)
+				} else {
+					log.Printf("✅ Utenti sincronizzati dopo attivazione MFA di '%s'", userName)
+				}
+			}(username)
+
 			WriteAuditLog("MFA_ENABLE", username, "MFA attivato con successo")
 			return
 		}
@@ -236,7 +250,7 @@ func mfaEnableHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/profile/mfa", http.StatusFound)
 }
 
-// ===== HANDLER DISATTIVAZIONE MFA =====
+// ===== HANDLER DISATTIVAZIONE MFA (con verifica password) =====
 func mfaDisableHandler(w http.ResponseWriter, r *http.Request) {
 	if !config.MFAEnabled {
 		http.NotFound(w, r)
@@ -246,20 +260,102 @@ func mfaDisableHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
+
 	username, _ := getUserContext(r)
 	u := getUserByUsername(username)
 	if u == nil {
 		http.Error(w, "Utente non trovato", http.StatusNotFound)
 		return
 	}
+
+	// 🔐 VERIFICA PASSWORD PRIMA DI DISATTIVARE MFA
+	password := r.FormValue("password")
+	if password == "" {
+		http.Error(w, "Password richiesta per disattivare MFA", http.StatusBadRequest)
+		return
+	}
+
+	// Verifica la password
+	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
+		WriteAuditLog("mfa_disable_failed", username, "Tentativo di disattivazione MFA con password errata")
+		http.Error(w, "Password errata", http.StatusUnauthorized)
+		return
+	}
+
+	// Disattiva MFA
 	userMutex.Lock()
 	u.TOTPEnabled = false
 	u.TOTPSecret = ""
 	u.TOTPBackupCodes = []string{}
+	u.TOTPForceSetup = false // Non forzare il setup dopo disattivazione volontaria
 	saveUsers(currentDataDir)
 	userMutex.Unlock()
-	WriteAuditLog("MFA_DISABLE", username, "MFA disattivato")
+
+	// Sincronizza
+	go func() {
+		usersPath := filepath.Join(currentDataDir, "users.enc")
+		if err := SyncFileToAllRemotes(usersPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione disattivazione MFA per %s: %v", username, err)
+		} else {
+			log.Printf("✅ MFA disattivato per %s e sincronizzato", username)
+		}
+	}()
+
+	WriteAuditLog("mfa_disable_success", username, "MFA disattivato volontariamente")
 	http.Redirect(w, r, "/profile/mfa", http.StatusFound)
+}
+
+// ===== RIGENERAZIONE CODICI DI BACKUP =====
+func mfaRegenerateBackupHandler(w http.ResponseWriter, r *http.Request) {
+	if !config.MFAEnabled {
+		http.NotFound(w, r)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	username, _ := getUserContext(r)
+	u := getUserByUsername(username)
+	if u == nil {
+		http.Error(w, "Utente non trovato", http.StatusNotFound)
+		return
+	}
+
+	// Verifica che MFA sia attivo
+	if !u.TOTPEnabled {
+		http.Error(w, "MFA non è attivo per questo utente", http.StatusBadRequest)
+		return
+	}
+
+	// Genera nuovi codici di backup
+	newCodes := generateBackupCodes(5)
+
+	// Aggiorna l'utente
+	userMutex.Lock()
+	u.TOTPBackupCodes = newCodes
+	saveUsers(currentDataDir)
+	userMutex.Unlock()
+
+	// Sincronizza
+	go func() {
+		usersPath := filepath.Join(currentDataDir, "users.enc")
+		if err := SyncFileToAllRemotes(usersPath); err != nil {
+			log.Printf("❌ Errore sincronizzazione rigenerazione backup per %s: %v", username, err)
+		} else {
+			log.Printf("✅ Backup codes rigenerati per %s e sincronizzati", username)
+		}
+	}()
+
+	WriteAuditLog("mfa_backup_regenerate", username, "Codici di backup rigenerati")
+
+	// Restituisci i nuovi codici in JSON
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"backup_codes": newCodes,
+		"message":      "Codici di backup rigenerati con successo",
+	})
 }
 
 // ===== PAGINA STANDALONE PER VERIFICA MFA DURANTE LOGIN =====
@@ -334,7 +430,28 @@ func mfaLoginVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Verifica il codice TOTP o i codici di backup
+	valid := false
 	if VerifyTOTP(u.TOTPSecret, code) {
+		valid = true
+	} else {
+		// Controlla se è un codice di backup
+		for i, backupCode := range u.TOTPBackupCodes {
+			if backupCode == code {
+				valid = true
+				// Rimuovi il codice di backup usato
+				u.TOTPBackupCodes = append(u.TOTPBackupCodes[:i], u.TOTPBackupCodes[i+1:]...)
+				userMutex.Lock()
+				saveUsers(currentDataDir)
+				userMutex.Unlock()
+				WriteAuditLog("mfa_backup_used", username, "Codice di backup usato per il login")
+				break
+			}
+		}
+	}
+
+	if valid {
+		// ✅ MFA riuscito
 		delete(session.Values, "mfa_pending_user")
 		delete(session.Values, "mfa_pending_authenticated")
 		session.Values["authenticated"] = true
@@ -350,6 +467,11 @@ func mfaLoginVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/alarms", http.StatusFound)
 		return
 	}
+
+	// ❌ MFA fallito - LOG DETTAGLIATO con IP
+	ip := getClientIP(r)
+	log.Printf("⚠️ Tentativo MFA fallito per %s da IP %s (codice: %s)", username, ip, code)
+	WriteAuditLog("login_mfa_failed", username, fmt.Sprintf("Tentativo di verifica MFA fallito da IP %s", ip))
 
 	http.Redirect(w, r, "/mfa-login?error=codice_non_valido", http.StatusFound)
 }
