@@ -195,7 +195,9 @@ func mfaEnableHandler(w http.ResponseWriter, r *http.Request) {
 			userMutex.Lock()
 			u.TOTPSecret = secret
 			u.TOTPEnabled = true
-			u.TOTPForceSetup = false // Rimuovi il flag di forzatura
+			u.TOTPForceSetup = false
+			u.MFAFailedAttempts = 0
+			u.MFALockedUntil = time.Time{}
 			backupCodes := generateBackupCodes(5)
 			u.TOTPBackupCodes = backupCodes
 			saveUsers(currentDataDir)
@@ -230,7 +232,6 @@ func mfaEnableHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			tmpl.ExecuteTemplate(w, "layout.html", data)
 
-			// Sincronizza il file users.enc sulle macchine remote
 			go func(userName string) {
 				usersPath := filepath.Join(currentDataDir, "users.enc")
 				if err := SyncFileToAllRemotes(usersPath); err != nil {
@@ -268,30 +269,28 @@ func mfaDisableHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 🔐 VERIFICA PASSWORD PRIMA DI DISATTIVARE MFA
 	password := r.FormValue("password")
 	if password == "" {
 		http.Error(w, "Password richiesta per disattivare MFA", http.StatusBadRequest)
 		return
 	}
 
-	// Verifica la password
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
 		WriteAuditLog("mfa_disable_failed", username, "Tentativo di disattivazione MFA con password errata")
 		http.Error(w, "Password errata", http.StatusUnauthorized)
 		return
 	}
 
-	// Disattiva MFA
 	userMutex.Lock()
 	u.TOTPEnabled = false
 	u.TOTPSecret = ""
 	u.TOTPBackupCodes = []string{}
-	u.TOTPForceSetup = false // Non forzare il setup dopo disattivazione volontaria
+	u.TOTPForceSetup = false
+	u.MFAFailedAttempts = 0
+	u.MFALockedUntil = time.Time{}
 	saveUsers(currentDataDir)
 	userMutex.Unlock()
 
-	// Sincronizza
 	go func() {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
@@ -323,22 +322,18 @@ func mfaRegenerateBackupHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verifica che MFA sia attivo
 	if !u.TOTPEnabled {
 		http.Error(w, "MFA non è attivo per questo utente", http.StatusBadRequest)
 		return
 	}
 
-	// Genera nuovi codici di backup
 	newCodes := generateBackupCodes(5)
 
-	// Aggiorna l'utente
 	userMutex.Lock()
 	u.TOTPBackupCodes = newCodes
 	saveUsers(currentDataDir)
 	userMutex.Unlock()
 
-	// Sincronizza
 	go func() {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
@@ -350,7 +345,6 @@ func mfaRegenerateBackupHandler(w http.ResponseWriter, r *http.Request) {
 
 	WriteAuditLog("mfa_backup_regenerate", username, "Codici di backup rigenerati")
 
-	// Restituisci i nuovi codici in JSON
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"backup_codes": newCodes,
@@ -383,6 +377,8 @@ func mfaLoginPageHandler(w http.ResponseWriter, r *http.Request) {
 			errMsg = "Codice non valido, riprova."
 		case "codice_mancante":
 			errMsg = "Inserisci il codice a 6 cifre."
+		case "bloccato":
+			errMsg = "Troppi tentativi falliti. Account bloccato per 15 minuti."
 		default:
 			errMsg = "Errore durante la verifica."
 		}
@@ -430,7 +426,30 @@ func mfaLoginVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verifica il codice TOTP o i codici di backup
+	// ═══════════════════════════════════════════════════════
+	// 🔒 CONTROLLO BLOCCO PER TENTATIVI FALLITI MFA
+	// ═══════════════════════════════════════════════════════
+	userMutex.Lock()
+	if !u.MFALockedUntil.IsZero() {
+		if time.Now().Before(u.MFALockedUntil) {
+			userMutex.Unlock()
+			log.Printf("🔒 Tentativo MFA durante blocco per %s", username)
+			WriteAuditLog("mfa_login_blocked", username, "Tentativo di MFA durante blocco")
+			http.Redirect(w, r, "/mfa-login?error=bloccato", http.StatusFound)
+			return
+		} else {
+			// Il blocco è scaduto: resetta i tentativi
+			u.MFAFailedAttempts = 0
+			u.MFALockedUntil = time.Time{}
+			saveUsers(currentDataDir)
+			log.Printf("🔄 Blocco MFA scaduto per %s, tentativi resettati", username)
+		}
+	}
+	userMutex.Unlock()
+
+	// ═══════════════════════════════════════════════════════
+	// VERIFICA CODICE TOTP O CODICE DI BACKUP
+	// ═══════════════════════════════════════════════════════
 	valid := false
 	if VerifyTOTP(u.TOTPSecret, code) {
 		valid = true
@@ -451,7 +470,13 @@ func mfaLoginVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if valid {
-		// ✅ MFA riuscito
+		// ✅ MFA RIUSCITO: resetta i tentativi
+		userMutex.Lock()
+		u.MFAFailedAttempts = 0
+		u.MFALockedUntil = time.Time{}
+		saveUsers(currentDataDir)
+		userMutex.Unlock()
+
 		delete(session.Values, "mfa_pending_user")
 		delete(session.Values, "mfa_pending_authenticated")
 		session.Values["authenticated"] = true
@@ -468,10 +493,26 @@ func mfaLoginVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ❌ MFA fallito - LOG DETTAGLIATO con IP
-	ip := getClientIP(r)
-	log.Printf("⚠️ Tentativo MFA fallito per %s da IP %s (codice: %s)", username, ip, code)
-	WriteAuditLog("login_mfa_failed", username, fmt.Sprintf("Tentativo di verifica MFA fallito da IP %s", ip))
+	// ❌ MFA FALLITO: incrementa il contatore
+	userMutex.Lock()
+	u.MFAFailedAttempts++
+	locked := false
+	if u.MFAFailedAttempts >= 5 {
+		u.MFALockedUntil = time.Now().Add(15 * time.Minute)
+		locked = true
+		WriteAuditLog("mfa_login_locked", username, "Account bloccato per 15 minuti per troppi tentativi MFA falliti")
+		log.Printf("🔒 Account %s bloccato per 15 minuti per troppi tentativi MFA falliti", username)
+	}
+	saveUsers(currentDataDir)
+	userMutex.Unlock()
 
-	http.Redirect(w, r, "/mfa-login?error=codice_non_valido", http.StatusFound)
+	ip := getClientIP(r)
+	log.Printf("⚠️ Tentativo MFA fallito per %s da IP %s (codice: %s) - tentativo #%d", username, ip, code, u.MFAFailedAttempts)
+	WriteAuditLog("login_mfa_failed", username, fmt.Sprintf("Tentativo di verifica MFA fallito da IP %s (#%d)", ip, u.MFAFailedAttempts))
+
+	if locked {
+		http.Redirect(w, r, "/mfa-login?error=bloccato", http.StatusFound)
+	} else {
+		http.Redirect(w, r, "/mfa-login?error=codice_non_valido", http.StatusFound)
+	}
 }

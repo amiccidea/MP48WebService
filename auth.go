@@ -383,86 +383,93 @@ func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 // ==================== LOGIN HANDLER ====================
 func loginHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		data := map[string]interface{}{
-			"CSRFField": csrf.TemplateField(r),
-			"CSRFToken": csrf.Token(r),
-			"CompanyInfo": config.CompanyInfo,
-		}
-		tmpl.ExecuteTemplate(w, "login.html", data)
-		return
-	}
+    if r.Method == http.MethodGet {
+        data := map[string]interface{}{
+            "CSRFField":    csrf.TemplateField(r),
+            "CSRFToken":    csrf.Token(r),
+            "CompanyInfo":  config.CompanyInfo,
+        }
+        tmpl.ExecuteTemplate(w, "login.html", data)
+        return
+    }
 
-	username := strings.TrimSpace(r.FormValue("username"))
-	password := r.FormValue("password")
+    username := strings.TrimSpace(r.FormValue("username"))
+    password := r.FormValue("password")
 
-	log.Printf("🔍 Login tentativo per %s", username)
+    log.Printf("🔍 Login tentativo per %s", username)
 
-	if authenticateLocal(username, password) {
-		u := getUserByUsername(username)
-		if u == nil {
-			tmpl.ExecuteTemplate(w, "login.html", map[string]string{"error": "Credenziali non valide"})
-			return
-		}
+    if authenticateLocal(username, password) {
+        u := getUserByUsername(username)
+        if u == nil {
+            tmpl.ExecuteTemplate(w, "login.html", map[string]string{"error": "Credenziali non valide"})
+            return
+        }
 
-		// ✅ PRIORITÀ 1: Password scaduta o cambio forzato
-		if u.MustChangePwd || isPasswordExpired(u) {
-			session, _ := store.Get(r, "portal-session")
-			session.Values["pending_user"] = username
-			session.Save(r, w)
-			http.Redirect(w, r, "/change-password", http.StatusFound)
-			return
-		}
+        // ═══════════════════════════════════════════════════════
+        // 🔐 RIGENERAZIONE SESSION ID DOPO LOGIN (session fixation)
+        // ═══════════════════════════════════════════════════════
+        // Invalida la vecchia sessione
+        oldSession, _ := store.Get(r, "portal-session")
+        oldSession.Options.MaxAge = -1
+        oldSession.Save(r, w)
 
-		// ✅ PRIORITÀ 2: Se MFA è abilitato globalmente e l'utente deve forzare il setup
-		if config.MFAEnabled && u.TOTPForceSetup {
-			session, _ := store.Get(r, "portal-session")
-			session.Values["authenticated"] = true
-			session.Values["username"] = username
-			session.Values["is_admin"] = (u.Role == RoleAdmin)
-			session.Values["last_activity"] = time.Now().Unix()
-			session.Values["created_at"] = time.Now().Unix()
-			session.Save(r, w)
-			// Reindirizza alla pagina di setup MFA (senza chiedere il codice)
-			http.Redirect(w, r, "/profile/mfa", http.StatusFound)
-			return
-		}
+        // Crea una nuova sessione
+        session, _ := store.Get(r, "portal-session")
+        session.Options.MaxAge = config.SessionMaxAgeSecond
 
-		// ✅ PRIORITÀ 3: MFA (solo se la password è valida E MFA è abilitato globalmente E l'utente ha MFA attivo)
-		if config.MFAEnabled && u.TOTPEnabled {
-			session, _ := store.Get(r, "portal-session")
-			session.Values["mfa_pending_user"] = username
-			session.Values["mfa_pending_authenticated"] = false
-			session.Save(r, w)
-			http.Redirect(w, r, "/mfa-login", http.StatusFound)
-			return
-		}
+        // ✅ PRIORITÀ 1: Password scaduta o cambio forzato
+        if u.MustChangePwd || isPasswordExpired(u) {
+            session.Values["pending_user"] = username
+            session.Save(r, w)
+            http.Redirect(w, r, "/change-password", http.StatusFound)
+            return
+        }
 
-		// ✅ PRIORITÀ 4: Login completo (senza MFA o MFA disabilitato globalmente)
-		session, _ := store.Get(r, "portal-session")
-		session.Values["authenticated"] = true
-		session.Values["username"] = username
-		session.Values["is_admin"] = (u.Role == RoleAdmin)
-		now := time.Now().Unix()
-		session.Values["last_activity"] = now
-		session.Values["created_at"] = now
-		session.Save(r, w)
+        // ✅ PRIORITÀ 2: Se MFA è abilitato globalmente e l'utente deve forzare il setup
+        if config.MFAEnabled && u.TOTPForceSetup {
+            session.Values["authenticated"] = true
+            session.Values["username"] = username
+            session.Values["is_admin"] = (u.Role == RoleAdmin)
+            session.Values["last_activity"] = time.Now().Unix()
+            session.Values["created_at"] = time.Now().Unix()
+            session.Save(r, w)
+            http.Redirect(w, r, "/profile/mfa", http.StatusFound)
+            return
+        }
 
-		log.Printf("Login riuscito per %s", username)
-		WriteAuditLog("login_success", username, "Login riuscito")
-		http.Redirect(w, r, "/alarms", http.StatusFound)
-		return
-	}
+        // ✅ PRIORITÀ 3: MFA (solo se la password è valida E MFA è abilitato globalmente E l'utente ha MFA attivo)
+        if config.MFAEnabled && u.TOTPEnabled {
+            session.Values["mfa_pending_user"] = username
+            session.Values["mfa_pending_authenticated"] = false
+            session.Save(r, w)
+            http.Redirect(w, r, "/mfa-login", http.StatusFound)
+            return
+        }
 
-	// Login fallito
-	u := getUserByUsername(username)
-	if u != nil && !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
-		tmpl.ExecuteTemplate(w, "login.html", map[string]string{
-			"error": fmt.Sprintf("Account bloccato fino alle %s", u.LockedUntil.Format("15:04:05")),
-		})
-	} else {
-		tmpl.ExecuteTemplate(w, "login.html", map[string]string{"error": "Credenziali non valide"})
-	}
+        // ✅ PRIORITÀ 4: Login completo (senza MFA o MFA disabilitato globalmente)
+        session.Values["authenticated"] = true
+        session.Values["username"] = username
+        session.Values["is_admin"] = (u.Role == RoleAdmin)
+        now := time.Now().Unix()
+        session.Values["last_activity"] = now
+        session.Values["created_at"] = now
+        session.Save(r, w)
+
+        log.Printf("Login riuscito per %s", username)
+        WriteAuditLog("login_success", username, "Login riuscito")
+        http.Redirect(w, r, "/alarms", http.StatusFound)
+        return
+    }
+
+    // Login fallito
+    u := getUserByUsername(username)
+    if u != nil && !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
+        tmpl.ExecuteTemplate(w, "login.html", map[string]string{
+            "error": fmt.Sprintf("Account bloccato fino alle %s", u.LockedUntil.Format("15:04:05")),
+        })
+    } else {
+        tmpl.ExecuteTemplate(w, "login.html", map[string]string{"error": "Credenziali non valide"})
+    }
 }
 
 // ==================== CHANGE PASSWORD HANDLERS ====================
