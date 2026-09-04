@@ -8,7 +8,6 @@ import (
 	"html/template"
 	"io"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -402,7 +401,6 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		endUnix = time.Now().Unix()
 	}
 
-	// Usa ioutil.ReadDir per Go 1.13
 	files, err := ioutil.ReadDir(backupDir)
 	if err != nil {
 		files = []os.FileInfo{}
@@ -461,7 +459,7 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 			return nil
 		})
 		if err != nil {
-			log.Printf("Errore walking config dir: %v", err)
+			Errorf("Errore walking config dir: %v", err)
 		}
 		sort.Slice(currentFiles, func(i, j int) bool {
 			return currentFiles[i].Name < currentFiles[j].Name
@@ -498,7 +496,7 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		MFAEnabled:      config.MFAEnabled,
 	}
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
-		log.Printf("❌ Errore rendering config history: %v", err)
+		Errorf("Errore rendering config history: %v", err)
 		http.Error(w, "Errore interno", http.StatusInternalServerError)
 	}
 }
@@ -512,7 +510,7 @@ func configHistoryDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	fullPath, err := ValidatePath(config.ConfigHistoryDir, filename)
 	if err != nil {
-		log.Printf("Errore validazione percorso download backup: %v", err)
+		Warnf("Errore validazione percorso download backup: %v", err)
 		http.Error(w, "Percorso non valido", http.StatusBadRequest)
 		return
 	}
@@ -538,7 +536,7 @@ func configCurrentFileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 
 	fullPath, err := ValidatePath(config.CurrentConfigurationDir, filePathParam)
 	if err != nil {
-		log.Printf("Errore validazione percorso download file corrente: %v", err)
+		Warnf("Errore validazione percorso download file corrente: %v", err)
 		http.Error(w, "Percorso non valido", http.StatusBadRequest)
 		return
 	}
@@ -564,7 +562,7 @@ func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 
 	fullPath, err := ValidatePath(config.ConfigHistoryDir, filename)
 	if err != nil {
-		log.Printf("Errore validazione percorso eliminazione backup: %v", err)
+		Warnf("Errore validazione percorso eliminazione backup: %v", err)
 		http.Error(w, "Percorso non valido", http.StatusBadRequest)
 		return
 	}
@@ -575,19 +573,19 @@ func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := os.Remove(fullPath); err != nil {
-		log.Printf("Errore eliminazione file %s: %v", fullPath, err)
+		Errorf("Errore eliminazione file %s: %v", fullPath, err)
 		http.Error(w, "Errore eliminazione", http.StatusInternalServerError)
 		return
 	}
 
 	username, _ := getUserContext(r)
-	WriteAuditLog("CONFIG_DELETE", username, filename)
+	WriteAuditLogWithRequest("CONFIG_DELETE", username, filename, r)
 
 	go func() {
 		if err := SyncFileDeleteFromAllRemotes(absFilePath); err != nil {
-			log.Printf("❌ Errore sincronizzazione eliminazione backup %s: %v", filename, err)
+			Errorf("Errore sincronizzazione eliminazione backup %s: %v", filename, err)
 		} else {
-			log.Printf("✅ Eliminazione backup %s sincronizzata sulle macchine remote", filename)
+			Infof("Eliminazione backup %s sincronizzata sulle macchine remote", filename)
 		}
 	}()
 
@@ -612,7 +610,7 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 
 	fullPath, err := ValidatePath(config.ConfigHistoryDir, filename)
 	if err != nil {
-		log.Printf("Errore validazione percorso restore backup: %v", err)
+		Warnf("Errore validazione percorso restore backup: %v", err)
 		http.Error(w, "Percorso non valido", http.StatusBadRequest)
 		return
 	}
@@ -628,33 +626,33 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 
 	backupAutoPath, backupAutoName, err := backupCurrentConfigDir()
 	if err != nil {
-		log.Printf("Errore backup: %v", err)
+		Errorf("Errore backup: %v", err)
 		http.Error(w, "Errore durante il backup della configurazione corrente", http.StatusInternalServerError)
 		return
 	}
-	log.Printf("Backup automatico creato: %s", backupAutoName)
+	Infof("Backup automatico creato: %s", backupAutoName)
 
 	if err := extractArchive(fullPath, config.CurrentConfigurationDir); err != nil {
-		log.Printf("Errore estrazione: %v", err)
+		Errorf("Errore estrazione: %v", err)
 		http.Error(w, "Errore durante il ripristino", http.StatusInternalServerError)
 		return
 	}
 	username, _ := getUserContext(r)
-	WriteAuditLog("CONFIG_RESTORE", username, fmt.Sprintf("ripristinato backup %s (backup automatico: %s)", filename, backupAutoName))
+	WriteAuditLogWithRequest("CONFIG_RESTORE", username, fmt.Sprintf("ripristinato backup %s (backup automatico: %s)", filename, backupAutoName), r)
 
 	go func() {
 		if err := SyncFileToAllRemotes(backupAutoPath); err != nil {
-			log.Printf("❌ Errore sincronizzazione backup automatico %s: %v", backupAutoName, err)
+			Errorf("Errore sincronizzazione backup automatico %s: %v", backupAutoName, err)
 		} else {
-			log.Printf("✅ Backup automatico %s sincronizzato sulle macchine remote", backupAutoName)
+			Infof("Backup automatico %s sincronizzato sulle macchine remote", backupAutoName)
 		}
 	}()
 
 	go func() {
 		if err := SyncDirToAllRemotes(config.CurrentConfigurationDir); err != nil {
-			log.Printf("❌ Errore sincronizzazione configurazione ripristinata: %v", err)
+			Errorf("Errore sincronizzazione configurazione ripristinata: %v", err)
 		} else {
-			log.Printf("✅ Configurazione ripristinata sincronizzata sulle macchine remote")
+			Infof("Configurazione ripristinata sincronizzata sulle macchine remote")
 		}
 	}()
 

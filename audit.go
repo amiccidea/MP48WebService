@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http" 
 	"os"
 	"path/filepath"
 	"sync"
@@ -11,14 +12,14 @@ import (
 
 var auditMutex sync.Mutex
 
-// WriteAuditLog scrive una riga di log nel file giornaliero
+// WriteAuditLog scrive una riga di log nel file giornaliero (senza contesto HTTP)
 func WriteAuditLog(action, username, details string) {
 	if config.AuditLogDir == "" {
-		return // logging disabilitato
+		return
 	}
 	// Crea directory se non esiste
 	if err := os.MkdirAll(config.AuditLogDir, 0755); err != nil {
-		log.Printf("Errore creazione directory audit log: %v", err)
+		log.Printf("[ERROR] Errore creazione directory audit log: %v", err)
 		return
 	}
 	// Nome file: LogMP48Ws_YYYYMMDD.log
@@ -31,22 +32,33 @@ func WriteAuditLog(action, username, details string) {
 	defer auditMutex.Unlock()
 	f, err := os.OpenFile(filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		log.Printf("Errore apertura file audit log: %v", err)
+		log.Printf("[ERROR] Errore apertura file audit log: %v", err)
 		return
 	}
 	defer f.Close()
 	if _, err := f.WriteString(line); err != nil {
-		log.Printf("Errore scrittura audit log: %v", err)
+		log.Printf("[ERROR] Errore scrittura audit log: %v", err)
 	}
 
 	// 🔄 Sincronizzazione immediata dell'audit log sulle macchine remote (in background)
 	go func() {
-		// Attendiamo un breve momento per assicurarci che il file sia stato scritto
 		time.Sleep(500 * time.Millisecond)
 		if err := SyncFileToAllRemotes(filePath); err != nil {
-			log.Printf("❌ Errore sincronizzazione audit log (scrittura): %v", err)
+			log.Printf("[ERROR] Errore sincronizzazione audit log (scrittura): %v", err)
 		} else {
-			log.Printf("✅ Audit log sincronizzato dopo scrittura di '%s' da %s", action, username)
+			log.Printf("[INFO] Audit log sincronizzato dopo scrittura di '%s' da %s", action, username)
 		}
 	}()
+}
+
+// WriteAuditLogWithRequest scrive una riga di audit log arricchita con IP e User Agent
+func WriteAuditLogWithRequest(action, username, details string, r *http.Request) {
+	if r == nil {
+		WriteAuditLog(action, username, details)
+		return
+	}
+	ip := GetClientIP(r)
+	ua := GetUserAgent(r)
+	enrichedDetails := fmt.Sprintf("%s | IP: %s | UA: %s", details, ip, ua)
+	WriteAuditLog(action, username, enrichedDetails)
 }

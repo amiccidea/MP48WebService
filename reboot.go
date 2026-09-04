@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"html/template"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -39,11 +38,11 @@ func RebootLocal() error {
 	if runtime.GOOS != "linux" {
 		return fmt.Errorf("reboot locale supportato solo su Linux")
 	}
-	log.Printf("🔄 Tentativo reboot locale con syscall.Reboot...")
+	Infof("Tentativo reboot locale con syscall.Reboot...")
 	err := syscall.Reboot(syscall.LINUX_REBOOT_CMD_RESTART)
 	if err != nil {
-		log.Printf("⚠️ syscall.Reboot fallito: %v", err)
-		log.Printf("🔄 Tentativo fallback con /sbin/reboot...")
+		Warnf("syscall.Reboot fallito: %v", err)
+		Infof("Tentativo fallback con /sbin/reboot...")
 		cmd := exec.Command("/sbin/reboot")
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
@@ -52,7 +51,7 @@ func RebootLocal() error {
 		}
 		return nil
 	}
-	log.Printf("✅ syscall.Reboot eseguito con successo")
+	Infof("syscall.Reboot eseguito con successo")
 	return nil
 }
 
@@ -72,7 +71,7 @@ func rebootViaSyscallTelnet(machine *RemoteMachine) error {
 
 	// Ricarica credenziali se mancano
 	if username == "" || password == "" {
-		log.Printf("⚠️ Credenziali mancanti per %s (Telnet), tentativo di ricarica...", machine.ID)
+		Warnf("Credenziali mancanti per %s (Telnet), tentativo di ricarica...", machine.ID)
 		remoteCreds, err := loadRemoteCredentials(currentDataDir)
 		if err != nil {
 			return fmt.Errorf("errore caricamento credenziali: %w", err)
@@ -85,9 +84,9 @@ func rebootViaSyscallTelnet(machine *RemoteMachine) error {
 				username = cred.TelnetUsername
 				password = cred.TelnetPassword
 				sudoPwd = cred.SudoPassword
-				log.Printf("✅ Credenziali ricaricate per %s (Telnet): username='%s'", machine.ID, username)
+				Infof("Credenziali ricaricate per %s (Telnet): username='%s'", machine.ID, username)
 			} else {
-				log.Printf("❌ Nessuna credenziale per %s in remote_creds.enc", machine.ID)
+				Warnf("Nessuna credenziale per %s in remote_creds.enc", machine.ID)
 			}
 		}
 	}
@@ -99,7 +98,7 @@ func rebootViaSyscallTelnet(machine *RemoteMachine) error {
 	scriptPath := machine.Telnet.ScriptPath
 	if scriptPath == "" {
 		scriptPath = "/usr/local/bin/reboot_remote.sh"
-		log.Printf("⚠️ ScriptPath Telnet non configurato per %s, uso fallback: %s", machine.Name, scriptPath)
+		Warnf("ScriptPath Telnet non configurato per %s, uso fallback: %s", machine.Name, scriptPath)
 	}
 
 	rebootCmd := machine.Telnet.RebootCommand
@@ -119,7 +118,7 @@ func rebootViaSyscallTelnet(machine *RemoteMachine) error {
 		"HOME=/root",
 	}
 
-	log.Printf("🔌 [TELNET] Eseguo script: %s su %s", scriptPath, machine.Host)
+	Infof("[TELNET] Eseguo script: %s su %s", scriptPath, machine.Host)
 
 	pid, err := InvocatoreSyscallNativo(scriptPath, argv, envv)
 	if err != nil {
@@ -139,7 +138,7 @@ func rebootViaSyscallTelnet(machine *RemoteMachine) error {
 	statusFile := "/tmp/reboot_status.txt"
 	data, err := ioutil.ReadFile(statusFile)
 	if err != nil {
-		log.Printf("⚠️ Impossibile leggere %s: %v", statusFile, err)
+		Warnf("Impossibile leggere %s: %v", statusFile, err)
 		return nil
 	}
 	status := strings.TrimSpace(string(data))
@@ -147,7 +146,7 @@ func rebootViaSyscallTelnet(machine *RemoteMachine) error {
 		return fmt.Errorf("reboot fallito (stato da file)")
 	}
 
-	log.Printf("✅ [TELNET] Reboot remoto completato per %s", machine.Name)
+	Infof("[TELNET] Reboot remoto completato per %s", machine.Name)
 	return nil
 }
 
@@ -167,7 +166,7 @@ func rebootViaSyscallSSH(machine *RemoteMachine) error {
 
 	// Ricarica credenziali se mancano
 	if username == "" || password == "" {
-		log.Printf("⚠️ Credenziali mancanti per %s (SSH), tentativo di ricarica...", machine.ID)
+		Warnf("Credenziali mancanti per %s (SSH), tentativo di ricarica...", machine.ID)
 		remoteCreds, err := loadRemoteCredentials(currentDataDir)
 		if err != nil {
 			return fmt.Errorf("errore caricamento credenziali: %w", err)
@@ -180,9 +179,9 @@ func rebootViaSyscallSSH(machine *RemoteMachine) error {
 				username = cred.TelnetUsername
 				password = cred.TelnetPassword
 				sudoPwd = cred.SudoPassword
-				log.Printf("✅ Credenziali ricaricate per %s (SSH): username='%s'", machine.ID, username)
+				Infof("Credenziali ricaricate per %s (SSH): username='%s'", machine.ID, username)
 			} else {
-				log.Printf("❌ Nessuna credenziale per %s in remote_creds.enc", machine.ID)
+				Warnf("Nessuna credenziale per %s in remote_creds.enc", machine.ID)
 			}
 		}
 	}
@@ -194,7 +193,7 @@ func rebootViaSyscallSSH(machine *RemoteMachine) error {
 	scriptPath := machine.SSH.ScriptPath
 	if scriptPath == "" {
 		scriptPath = "/usr/local/bin/reboot_ssh.sh"
-		log.Printf("⚠️ ScriptPath SSH non configurato per %s, uso fallback: %s", machine.Name, scriptPath)
+		Warnf("ScriptPath SSH non configurato per %s, uso fallback: %s", machine.Name, scriptPath)
 	}
 
 	rebootCmd := machine.SSH.RebootCommand
@@ -216,7 +215,7 @@ func rebootViaSyscallSSH(machine *RemoteMachine) error {
 		"HOME=/root",
 	}
 
-	log.Printf("🔐 [SSH] Eseguo script: %s su %s", scriptPath, machine.Host)
+	Infof("[SSH] Eseguo script: %s su %s", scriptPath, machine.Host)
 
 	pid, err := InvocatoreSyscallNativo(scriptPath, argv, envv)
 	if err != nil {
@@ -236,7 +235,7 @@ func rebootViaSyscallSSH(machine *RemoteMachine) error {
 	statusFile := "/tmp/reboot_status.txt"
 	data, err := ioutil.ReadFile(statusFile)
 	if err != nil {
-		log.Printf("⚠️ Impossibile leggere %s: %v", statusFile, err)
+		Warnf("Impossibile leggere %s: %v", statusFile, err)
 		return nil
 	}
 	status := strings.TrimSpace(string(data))
@@ -244,7 +243,7 @@ func rebootViaSyscallSSH(machine *RemoteMachine) error {
 		return fmt.Errorf("reboot fallito (stato da file)")
 	}
 
-	log.Printf("✅ [SSH] Reboot remoto completato per %s", machine.Name)
+	Infof("[SSH] Reboot remoto completato per %s", machine.Name)
 	return nil
 }
 
@@ -474,7 +473,7 @@ func rebootPageHandler(w http.ResponseWriter, r *http.Request) {
 		MFAEnabled:      config.MFAEnabled,
 	}
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
-		log.Printf("❌ Errore rendering reboot page: %v", err)
+		Errorf("Errore rendering reboot page: %v", err)
 		http.Error(w, "Errore interno", http.StatusInternalServerError)
 	}
 }
@@ -489,7 +488,9 @@ func rebootLocalHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Accesso negato", http.StatusForbidden)
 		return
 	}
+	username, _ := getUserContext(r)
 	go RebootLocal()
+	WriteAuditLogWithRequest("REBOOT_LOCAL", username, "Riavvio locale avviato", r)
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Riavvio locale avviato"))
 }

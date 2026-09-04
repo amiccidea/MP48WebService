@@ -32,7 +32,7 @@ func init() {
 		Path:     "/",
 		HttpOnly: true,
 		Secure:   secureFlag,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: http.SameSiteStrictMode,
 	}
 
 	funcMap := template.FuncMap{
@@ -52,9 +52,7 @@ func init() {
 	}
 	os.MkdirAll(currentDataDir, 0700)
 
-	// ═══════════════════════════════════════════════════
 	// 1. Carica la chiave DI CRITTOGRAFIA PRIMA DI TUTTO
-	// ═══════════════════════════════════════════════════
 	keyPath := config.EncryptionKeyPath
 	if keyPath == "" {
 		keyPath = filepath.Join(currentDataDir, "encryption.key")
@@ -62,34 +60,30 @@ func init() {
 	var err error
 	encryptionKey, err = loadOrGenerateKey(keyPath)
 	if err != nil {
-		log.Fatal("Errore chiave crittografia:", err)
+		log.Fatal("[ERROR] Errore chiave crittografia:", err)
 	}
 
-	// ═══════════════════════════════════════════════════
 	// 2. Ora carica UTENTI, RUOLI e CREDENZIALI
-	// ═══════════════════════════════════════════════════
 	if err := loadUsers(currentDataDir); err != nil {
-		log.Printf("Errore caricamento utenti, inizializzo default: %v", err)
+		Errorf("Errore caricamento utenti, inizializzo default: %v", err)
 		userMutex.Lock()
 		initDefaultUsers()
 		saveUsers(currentDataDir)
 		userMutex.Unlock()
 	}
 	if err := loadRoles(currentDataDir); err != nil {
-		log.Printf("Errore caricamento ruoli, uso default: %v", err)
+		Errorf("Errore caricamento ruoli, uso default: %v", err)
 		saveRoles(currentDataDir)
 	}
 
-	// ═══════════════════════════════════════════════════
-	// 3. Carica le credenziali remote (ORA FUNZIONA!)
-	// ═══════════════════════════════════════════════════
+	// 3. Carica le credenziali remote
 	loadRemoteCredentialsFromDir()
 }
 
 func loadRemoteCredentialsFromDir() {
 	remoteCreds, err := loadRemoteCredentials(currentDataDir)
 	if err != nil {
-		log.Printf("Errore caricamento credenziali remote: %v", err)
+		Errorf("Errore caricamento credenziali remote: %v", err)
 		return
 	}
 	if remoteCreds != nil && remoteCreds.Machines != nil {
@@ -103,9 +97,9 @@ func loadRemoteCredentialsFromDir() {
 				config.RemoteMachines[i].Telnet.SudoPassword = cred.SudoPassword
 			}
 		}
-		log.Printf("Credenziali remote caricate per %d macchine", len(remoteCreds.Machines))
+		Infof("Credenziali remote caricate per %d macchine", len(remoteCreds.Machines))
 	} else {
-		log.Println("AVVISO: Nessuna credenziale remota configurata. Usare l'interfaccia admin per impostarle.")
+		Warn("Nessuna credenziale remota configurata. Usare l'interfaccia admin per impostarle.")
 	}
 }
 
@@ -126,7 +120,7 @@ func initDefaultUsers() {
 		PasswordChangedAt: now,
 		Enabled:           true,
 		LastModified:      now,
-		TOTPForceSetup:    false, // admin non forzato all'avvio
+		TOTPForceSetup:    false,
 	}
 	users["operatore"] = &User{
 		ID:                "operatore",
@@ -180,19 +174,19 @@ func authenticateLocal(username, password string) bool {
 
 	u := getUserByUsername(username)
 	if u == nil {
-		log.Printf("Tentativo di accesso per utente inesistente: %s", username)
+		Infof("Tentativo di accesso per utente inesistente: %s", username)
 		WriteAuditLog("login_failed", username, "Tentativo di accesso per utente inesistente")
 		return false
 	}
 
 	if !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
-		log.Printf("Accesso negato per utente bloccato: %s (bloccato fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
+		Infof("Accesso negato per utente bloccato: %s (bloccato fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
 		WriteAuditLog("login_failed", username, "Accesso negato per utente bloccato")
 		return false
 	}
 
 	if !u.Enabled {
-		log.Printf("Tentativo di accesso per utente disabilitato: %s", username)
+		Infof("Tentativo di accesso per utente disabilitato: %s", username)
 		WriteAuditLog("login_failed", username, "Tentativo di accesso per utente disabilitato")
 		return false
 	}
@@ -206,7 +200,7 @@ func authenticateLocal(username, password string) bool {
 				u.PasswordHistory = []string{}
 				u.LastModified = time.Now()
 				ok = true
-				log.Printf("Migrata password di %s a bcrypt", username)
+				Infof("Migrata password di %s a bcrypt", username)
 			}
 		}
 	} else {
@@ -219,18 +213,18 @@ func authenticateLocal(username, password string) bool {
 		u.LockedUntil = time.Time{}
 		saveUsers(currentDataDir)
 		WriteAuditLog("login_success", username, "Login riuscito")
-		log.Printf("Login riuscito per %s", username)
+		Infof("Login riuscito per %s", username)
 		return true
 	}
 
 	u.FailedLoginAttempts++
 	WriteAuditLog("login_failed", username, "Tentativo di accesso fallito")
-	log.Printf("Tentativo di accesso fallito per %s (%d/5)", username, u.FailedLoginAttempts)
+	Infof("Tentativo di accesso fallito per %s (%d/5)", username, u.FailedLoginAttempts)
 
 	if u.FailedLoginAttempts >= 5 {
 		u.LockedUntil = time.Now().Add(15 * time.Minute)
 		WriteAuditLog("login_failed", username, "Account bloccato per 15 minuti")
-		log.Printf("Account %s bloccato per 15 minuti (fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
+		Infof("Account %s bloccato per 15 minuti (fino a %s)", username, u.LockedUntil.Format(time.RFC3339))
 	}
 	saveUsers(currentDataDir)
 	return false
@@ -347,16 +341,12 @@ func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
 			return
 		}
 
-		// ═══════════════════════════════════════════════════════
 		// 🔒 CONTROLLO MFA FORZATO
-		// ═══════════════════════════════════════════════════════
 		username, _ := getUserContext(r)
 		if username != "" && config.MFAEnabled {
 			u := getUserByUsername(username)
 			if u != nil && u.TOTPForceSetup {
-				// L'utente deve configurare MFA
 				path := r.URL.Path
-				// Escludi le route che devono essere accessibili
 				if path != "/profile/mfa" && path != "/logout" && path != "/mfa-login" && !strings.HasPrefix(path, "/static/") {
 					http.Redirect(w, r, "/profile/mfa", http.StatusFound)
 					return
@@ -383,93 +373,89 @@ func adminMiddleware(next http.HandlerFunc) http.HandlerFunc {
 
 // ==================== LOGIN HANDLER ====================
 func loginHandler(w http.ResponseWriter, r *http.Request) {
-    if r.Method == http.MethodGet {
-        data := map[string]interface{}{
-            "CSRFField":    csrf.TemplateField(r),
-            "CSRFToken":    csrf.Token(r),
-            "CompanyInfo":  config.CompanyInfo,
-        }
-        tmpl.ExecuteTemplate(w, "login.html", data)
-        return
-    }
+	if r.Method == http.MethodGet {
+		data := map[string]interface{}{
+			"CSRFField":   csrf.TemplateField(r),
+			"CSRFToken":   csrf.Token(r),
+			"CompanyInfo": config.CompanyInfo,
+		}
+		tmpl.ExecuteTemplate(w, "login.html", data)
+		return
+	}
 
-    username := strings.TrimSpace(r.FormValue("username"))
-    password := r.FormValue("password")
+	username := strings.TrimSpace(r.FormValue("username"))
+	password := r.FormValue("password")
 
-    log.Printf("🔍 Login tentativo per %s", username)
+	Infof("Login tentativo per %s da IP %s", username, GetClientIP(r))
 
-    if authenticateLocal(username, password) {
-        u := getUserByUsername(username)
-        if u == nil {
-            tmpl.ExecuteTemplate(w, "login.html", map[string]string{"error": "Credenziali non valide"})
-            return
-        }
+	if authenticateLocal(username, password) {
+		u := getUserByUsername(username)
+		if u == nil {
+			tmpl.ExecuteTemplate(w, "login.html", map[string]string{"error": "Credenziali non valide"})
+			return
+		}
 
-        // ═══════════════════════════════════════════════════════
-        // 🔐 RIGENERAZIONE SESSION ID DOPO LOGIN (session fixation)
-        // ═══════════════════════════════════════════════════════
-        // Invalida la vecchia sessione
-        oldSession, _ := store.Get(r, "portal-session")
-        oldSession.Options.MaxAge = -1
-        oldSession.Save(r, w)
+		// 🔐 RIGENERAZIONE SESSION ID DOPO LOGIN
+		oldSession, _ := store.Get(r, "portal-session")
+		oldSession.Options.MaxAge = -1
+		oldSession.Save(r, w)
 
-        // Crea una nuova sessione
-        session, _ := store.Get(r, "portal-session")
-        session.Options.MaxAge = config.SessionMaxAgeSecond
+		session, _ := store.Get(r, "portal-session")
+		session.Options.MaxAge = config.SessionMaxAgeSecond
 
-        // ✅ PRIORITÀ 1: Password scaduta o cambio forzato
-        if u.MustChangePwd || isPasswordExpired(u) {
-            session.Values["pending_user"] = username
-            session.Save(r, w)
-            http.Redirect(w, r, "/change-password", http.StatusFound)
-            return
-        }
+		// ✅ PRIORITÀ 1: Password scaduta o cambio forzato
+		if u.MustChangePwd || isPasswordExpired(u) {
+			session.Values["pending_user"] = username
+			session.Save(r, w)
+			http.Redirect(w, r, "/change-password", http.StatusFound)
+			return
+		}
 
-        // ✅ PRIORITÀ 2: Se MFA è abilitato globalmente e l'utente deve forzare il setup
-        if config.MFAEnabled && u.TOTPForceSetup {
-            session.Values["authenticated"] = true
-            session.Values["username"] = username
-            session.Values["is_admin"] = (u.Role == RoleAdmin)
-            session.Values["last_activity"] = time.Now().Unix()
-            session.Values["created_at"] = time.Now().Unix()
-            session.Save(r, w)
-            http.Redirect(w, r, "/profile/mfa", http.StatusFound)
-            return
-        }
+		// ✅ PRIORITÀ 2: Se MFA è abilitato globalmente e l'utente deve forzare il setup
+		if config.MFAEnabled && u.TOTPForceSetup {
+			session.Values["authenticated"] = true
+			session.Values["username"] = username
+			session.Values["is_admin"] = (u.Role == RoleAdmin)
+			session.Values["last_activity"] = time.Now().Unix()
+			session.Values["created_at"] = time.Now().Unix()
+			session.Save(r, w)
+			http.Redirect(w, r, "/profile/mfa", http.StatusFound)
+			return
+		}
 
-        // ✅ PRIORITÀ 3: MFA (solo se la password è valida E MFA è abilitato globalmente E l'utente ha MFA attivo)
-        if config.MFAEnabled && u.TOTPEnabled {
-            session.Values["mfa_pending_user"] = username
-            session.Values["mfa_pending_authenticated"] = false
-            session.Save(r, w)
-            http.Redirect(w, r, "/mfa-login", http.StatusFound)
-            return
-        }
+		// ✅ PRIORITÀ 3: MFA
+		if config.MFAEnabled && u.TOTPEnabled {
+			session.Values["mfa_pending_user"] = username
+			session.Values["mfa_pending_authenticated"] = false
+			session.Save(r, w)
+			http.Redirect(w, r, "/mfa-login", http.StatusFound)
+			return
+		}
 
-        // ✅ PRIORITÀ 4: Login completo (senza MFA o MFA disabilitato globalmente)
-        session.Values["authenticated"] = true
-        session.Values["username"] = username
-        session.Values["is_admin"] = (u.Role == RoleAdmin)
-        now := time.Now().Unix()
-        session.Values["last_activity"] = now
-        session.Values["created_at"] = now
-        session.Save(r, w)
+		// ✅ PRIORITÀ 4: Login completo
+		session.Values["authenticated"] = true
+		session.Values["username"] = username
+		session.Values["is_admin"] = (u.Role == RoleAdmin)
+		now := time.Now().Unix()
+		session.Values["last_activity"] = now
+		session.Values["created_at"] = now
+		session.Save(r, w)
 
-        log.Printf("Login riuscito per %s", username)
-        WriteAuditLog("login_success", username, "Login riuscito")
-        http.Redirect(w, r, "/alarms", http.StatusFound)
-        return
-    }
+		Infof("Login riuscito per %s da IP %s", username, GetClientIP(r))
+		WriteAuditLogWithRequest("login_success", username, "Login riuscito", r)
+		http.Redirect(w, r, "/alarms", http.StatusFound)
+		return
+	}
 
-    // Login fallito
-    u := getUserByUsername(username)
-    if u != nil && !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
-        tmpl.ExecuteTemplate(w, "login.html", map[string]string{
-            "error": fmt.Sprintf("Account bloccato fino alle %s", u.LockedUntil.Format("15:04:05")),
-        })
-    } else {
-        tmpl.ExecuteTemplate(w, "login.html", map[string]string{"error": "Credenziali non valide"})
-    }
+	// Login fallito
+	u := getUserByUsername(username)
+	if u != nil && !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil) {
+		tmpl.ExecuteTemplate(w, "login.html", map[string]string{
+			"error": fmt.Sprintf("Account bloccato fino alle %s", u.LockedUntil.Format("15:04:05")),
+		})
+	} else {
+		tmpl.ExecuteTemplate(w, "login.html", map[string]string{"error": "Credenziali non valide"})
+	}
 }
 
 // ==================== CHANGE PASSWORD HANDLERS ====================
@@ -559,18 +545,14 @@ func changePasswordPost(w http.ResponseWriter, r *http.Request) {
 	go func(userName string) {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
-			log.Printf("❌ Errore sincronizzazione utenti (cambio password forzato per %s): %v", userName, err)
+			Errorf("Errore sincronizzazione utenti (cambio password forzato per %s): %v", userName, err)
 		} else {
-			log.Printf("✅ Utenti sincronizzati dopo cambio password forzato di '%s'", userName)
+			Infof("Utenti sincronizzati dopo cambio password forzato di '%s'", userName)
 		}
 	}(username)
 
 	delete(session.Values, "pending_user")
 
-	// ═══════════════════════════════════════════════════════
-	// 🔥 Se MFA è abilitato globalmente e l'utente ha MFA attivo,
-	//    reindirizza alla verifica
-	// ═══════════════════════════════════════════════════════
 	if config.MFAEnabled && u != nil && u.TOTPEnabled {
 		session.Values["mfa_pending_user"] = username
 		session.Values["mfa_pending_authenticated"] = false
@@ -579,7 +561,6 @@ func changePasswordPost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Se MFA non è attivo o disabilitato, autentica normalmente
 	session.Values["authenticated"] = true
 	session.Values["username"] = username
 	session.Values["is_admin"] = (u.Role == RoleAdmin)
@@ -588,6 +569,7 @@ func changePasswordPost(w http.ResponseWriter, r *http.Request) {
 	session.Values["created_at"] = now
 	session.Save(r, w)
 
+	WriteAuditLogWithRequest("password_change_forced", username, "Password cambiata forzatamente", r)
 	http.Redirect(w, r, "/alarms", http.StatusFound)
 }
 
@@ -676,9 +658,9 @@ func profileChangePasswordPost(w http.ResponseWriter, r *http.Request) {
 	go func(userName string) {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
-			log.Printf("❌ Errore sincronizzazione utenti (cambio password volontario per %s): %v", userName, err)
+			Errorf("Errore sincronizzazione utenti (cambio password volontario per %s): %v", userName, err)
 		} else {
-			log.Printf("✅ Utenti sincronizzati dopo cambio password volontario di '%s'", userName)
+			Infof("Utenti sincronizzati dopo cambio password volontario di '%s'", userName)
 		}
 	}(username)
 
@@ -688,5 +670,7 @@ func profileChangePasswordPost(w http.ResponseWriter, r *http.Request) {
 	session.Values["is_admin"] = isAdmin
 	session.Values["last_activity"] = time.Now().Unix()
 	session.Save(r, w)
+
+	WriteAuditLogWithRequest("password_change_voluntary", username, "Password cambiata volontariamente", r)
 	http.Redirect(w, r, "/alarms", http.StatusFound)
 }

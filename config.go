@@ -70,6 +70,7 @@ type Config struct {
 	BaseDN                   string          `json:"base_dn"`
 	BindDN                   string          `json:"bind_dn"`
 	BindPassword             string          `json:"bind_password"`
+	DebugMode 				 bool 			 `json:"debug_mode"` // <-- NUOVO
 	UserSearchBase           string          `json:"user_search_base"`
 	UserFilter               string          `json:"user_filter"`
 	AdminUsers               []string        `json:"admin_users"`

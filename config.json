@@ -92,5 +92,6 @@
         "indirizzo": "Via tipiacerebbesaperla, 1 - 61037 Mondofo(PU)"
     },    
     "mfa_enabled": true,
-    "mfa_issuer": "MP48WS@DEA_NrContratto"
+    "mfa_issuer": "MP48WS@DEA_NrContratto",
+    "debug_mode": false
 }

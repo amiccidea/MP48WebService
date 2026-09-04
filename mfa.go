@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"path/filepath"
 	"time"
@@ -104,7 +103,7 @@ func mfaPageHandler(w http.ResponseWriter, r *http.Request) {
 		MFAEnabled:      config.MFAEnabled,
 	}
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
-		log.Printf("❌ Errore rendering pagina MFA: %v", err)
+		Errorf("Errore rendering pagina MFA: %v", err)
 		http.Error(w, "Errore interno", http.StatusInternalServerError)
 	}
 }
@@ -132,6 +131,7 @@ func mfaEnableHandler(w http.ResponseWriter, r *http.Request) {
 	if action == "generate" {
 		secret, url, err := GenerateTOTPSecret(username)
 		if err != nil {
+			Errorf("Errore generazione secret per %s: %v", username, err)
 			http.Error(w, "Errore generazione secret", http.StatusInternalServerError)
 			return
 		}
@@ -142,6 +142,7 @@ func mfaEnableHandler(w http.ResponseWriter, r *http.Request) {
 
 		qrBytes, err := GenerateTOTPQRCode(url)
 		if err != nil {
+			Errorf("Errore generazione QR code per %s: %v", username, err)
 			http.Error(w, "Errore generazione QR code", http.StatusInternalServerError)
 			return
 		}
@@ -235,15 +236,16 @@ func mfaEnableHandler(w http.ResponseWriter, r *http.Request) {
 			go func(userName string) {
 				usersPath := filepath.Join(currentDataDir, "users.enc")
 				if err := SyncFileToAllRemotes(usersPath); err != nil {
-					log.Printf("❌ Errore sincronizzazione utenti (attivazione MFA per %s): %v", userName, err)
+					Errorf("Errore sincronizzazione utenti (attivazione MFA per %s): %v", userName, err)
 				} else {
-					log.Printf("✅ Utenti sincronizzati dopo attivazione MFA di '%s'", userName)
+					Infof("Utenti sincronizzati dopo attivazione MFA di '%s'", userName)
 				}
 			}(username)
 
-			WriteAuditLog("MFA_ENABLE", username, "MFA attivato con successo")
+			WriteAuditLogWithRequest("MFA_ENABLE", username, "MFA attivato con successo", r)
 			return
 		}
+		Warnf("Tentativo di attivazione MFA per %s con codice non valido", username)
 		http.Error(w, "Codice non valido", http.StatusBadRequest)
 		return
 	}
@@ -276,7 +278,8 @@ func mfaDisableHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(u.PasswordHash), []byte(password)); err != nil {
-		WriteAuditLog("mfa_disable_failed", username, "Tentativo di disattivazione MFA con password errata")
+		Warnf("Tentativo di disattivazione MFA per %s con password errata da IP %s", username, GetClientIP(r))
+		WriteAuditLogWithRequest("mfa_disable_failed", username, "Tentativo di disattivazione MFA con password errata", r)
 		http.Error(w, "Password errata", http.StatusUnauthorized)
 		return
 	}
@@ -294,13 +297,13 @@ func mfaDisableHandler(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
-			log.Printf("❌ Errore sincronizzazione disattivazione MFA per %s: %v", username, err)
+			Errorf("Errore sincronizzazione disattivazione MFA per %s: %v", username, err)
 		} else {
-			log.Printf("✅ MFA disattivato per %s e sincronizzato", username)
+			Infof("MFA disattivato per %s e sincronizzato", username)
 		}
 	}()
 
-	WriteAuditLog("mfa_disable_success", username, "MFA disattivato volontariamente")
+	WriteAuditLogWithRequest("mfa_disable_success", username, "MFA disattivato volontariamente", r)
 	http.Redirect(w, r, "/profile/mfa", http.StatusFound)
 }
 
@@ -337,13 +340,13 @@ func mfaRegenerateBackupHandler(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
-			log.Printf("❌ Errore sincronizzazione rigenerazione backup per %s: %v", username, err)
+			Errorf("Errore sincronizzazione rigenerazione backup per %s: %v", username, err)
 		} else {
-			log.Printf("✅ Backup codes rigenerati per %s e sincronizzati", username)
+			Infof("Backup codes rigenerati per %s e sincronizzati", username)
 		}
 	}()
 
-	WriteAuditLog("mfa_backup_regenerate", username, "Codici di backup rigenerati")
+	WriteAuditLogWithRequest("mfa_backup_regenerate", username, "Codici di backup rigenerati", r)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -426,51 +429,43 @@ func mfaLoginVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// ═══════════════════════════════════════════════════════
 	// 🔒 CONTROLLO BLOCCO PER TENTATIVI FALLITI MFA
-	// ═══════════════════════════════════════════════════════
 	userMutex.Lock()
 	if !u.MFALockedUntil.IsZero() {
 		if time.Now().Before(u.MFALockedUntil) {
 			userMutex.Unlock()
-			log.Printf("🔒 Tentativo MFA durante blocco per %s", username)
-			WriteAuditLog("mfa_login_blocked", username, "Tentativo di MFA durante blocco")
+			Warnf("Tentativo MFA durante blocco per %s da IP %s", username, GetClientIP(r))
+			WriteAuditLogWithRequest("mfa_login_blocked", username, "Tentativo di MFA durante blocco", r)
 			http.Redirect(w, r, "/mfa-login?error=bloccato", http.StatusFound)
 			return
 		} else {
-			// Il blocco è scaduto: resetta i tentativi
 			u.MFAFailedAttempts = 0
 			u.MFALockedUntil = time.Time{}
 			saveUsers(currentDataDir)
-			log.Printf("🔄 Blocco MFA scaduto per %s, tentativi resettati", username)
+			Infof("Blocco MFA scaduto per %s, tentativi resettati", username)
 		}
 	}
 	userMutex.Unlock()
 
-	// ═══════════════════════════════════════════════════════
 	// VERIFICA CODICE TOTP O CODICE DI BACKUP
-	// ═══════════════════════════════════════════════════════
 	valid := false
 	if VerifyTOTP(u.TOTPSecret, code) {
 		valid = true
 	} else {
-		// Controlla se è un codice di backup
 		for i, backupCode := range u.TOTPBackupCodes {
 			if backupCode == code {
 				valid = true
-				// Rimuovi il codice di backup usato
 				u.TOTPBackupCodes = append(u.TOTPBackupCodes[:i], u.TOTPBackupCodes[i+1:]...)
 				userMutex.Lock()
 				saveUsers(currentDataDir)
 				userMutex.Unlock()
-				WriteAuditLog("mfa_backup_used", username, "Codice di backup usato per il login")
+				WriteAuditLogWithRequest("mfa_backup_used", username, "Codice di backup usato per il login", r)
 				break
 			}
 		}
 	}
 
 	if valid {
-		// ✅ MFA RIUSCITO: resetta i tentativi
 		userMutex.Lock()
 		u.MFAFailedAttempts = 0
 		u.MFALockedUntil = time.Time{}
@@ -487,8 +482,8 @@ func mfaLoginVerifyHandler(w http.ResponseWriter, r *http.Request) {
 		session.Values["created_at"] = now
 		session.Save(r, w)
 
-		log.Printf("✅ Login MFA riuscito per %s", username)
-		WriteAuditLog("login_mfa_success", username, "Login con MFA riuscito")
+		Infof("Login MFA riuscito per %s da IP %s", username, GetClientIP(r))
+		WriteAuditLogWithRequest("login_mfa_success", username, "Login con MFA riuscito", r)
 		http.Redirect(w, r, "/alarms", http.StatusFound)
 		return
 	}
@@ -500,15 +495,15 @@ func mfaLoginVerifyHandler(w http.ResponseWriter, r *http.Request) {
 	if u.MFAFailedAttempts >= 5 {
 		u.MFALockedUntil = time.Now().Add(15 * time.Minute)
 		locked = true
-		WriteAuditLog("mfa_login_locked", username, "Account bloccato per 15 minuti per troppi tentativi MFA falliti")
-		log.Printf("🔒 Account %s bloccato per 15 minuti per troppi tentativi MFA falliti", username)
+		WriteAuditLogWithRequest("mfa_login_locked", username, "Account bloccato per 15 minuti per troppi tentativi MFA falliti", r)
+		Infof("Account %s bloccato per 15 minuti per troppi tentativi MFA falliti da IP %s", username, GetClientIP(r))
 	}
 	saveUsers(currentDataDir)
 	userMutex.Unlock()
 
-	ip := getClientIP(r)
-	log.Printf("⚠️ Tentativo MFA fallito per %s da IP %s (codice: %s) - tentativo #%d", username, ip, code, u.MFAFailedAttempts)
-	WriteAuditLog("login_mfa_failed", username, fmt.Sprintf("Tentativo di verifica MFA fallito da IP %s (#%d)", ip, u.MFAFailedAttempts))
+	ip := GetClientIP(r)
+	Warnf("Tentativo MFA fallito per %s da IP %s (codice: %s) - tentativo #%d", username, ip, code, u.MFAFailedAttempts)
+	WriteAuditLogWithRequest("login_mfa_failed", username, fmt.Sprintf("Tentativo di verifica MFA fallito da IP %s (#%d)", ip, u.MFAFailedAttempts), r)
 
 	if locked {
 		http.Redirect(w, r, "/mfa-login?error=bloccato", http.StatusFound)

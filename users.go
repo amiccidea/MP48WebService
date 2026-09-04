@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"html/template"
-	"log"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -49,7 +48,7 @@ func adminUsersPage(w http.ResponseWriter, r *http.Request) {
 		MFAEnabled:      config.MFAEnabled,
 	}
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
-		log.Printf("❌ Errore rendering users: %v", err)
+		Errorf("Errore rendering users: %v", err)
 		http.Error(w, "Errore interno", http.StatusInternalServerError)
 	}
 }
@@ -84,19 +83,20 @@ func adminUserCreate(w http.ResponseWriter, r *http.Request) {
 		PasswordChangedAt: now,
 		Enabled:           true,
 		LastModified:      now,
-		TOTPForceSetup:    config.MFAEnabled, // Forza MFA se abilitato globalmente
+		TOTPForceSetup:    config.MFAEnabled,
 	}
 	saveUsers(currentDataDir)
 
 	go func(userName string) {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
-			log.Printf("❌ Errore sincronizzazione utenti (creazione): %v", err)
+			Errorf("Errore sincronizzazione utenti (creazione): %v", err)
 		} else {
-			log.Printf("✅ Utenti sincronizzati dopo creazione di '%s'", userName)
+			Infof("Utenti sincronizzati dopo creazione di '%s'", userName)
 		}
 	}(username)
 
+	WriteAuditLogWithRequest("USER_CREATE", username, fmt.Sprintf("Creato utente %s con ruolo %s", username, role), r)
 	http.Redirect(w, r, "/admin/users", http.StatusFound)
 }
 
@@ -119,12 +119,13 @@ func adminUserDelete(w http.ResponseWriter, r *http.Request) {
 	go func(userName string) {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
-			log.Printf("❌ Errore sincronizzazione utenti (eliminazione): %v", err)
+			Errorf("Errore sincronizzazione utenti (eliminazione): %v", err)
 		} else {
-			log.Printf("✅ Utenti sincronizzati dopo eliminazione di '%s'", userName)
+			Infof("Utenti sincronizzati dopo eliminazione di '%s'", userName)
 		}
 	}(username)
 
+	WriteAuditLogWithRequest("USER_DELETE", username, fmt.Sprintf("Eliminato utente %s", username), r)
 	http.Redirect(w, r, "/admin/users", http.StatusFound)
 }
 
@@ -149,7 +150,6 @@ func adminUserEditForm(w http.ResponseWriter, r *http.Request) {
 	perms := getUserPermissions(usernameCtx)
 	rolesList := getAllRoles()
 
-	// Calcola se l'utente è attualmente bloccato
 	isLocked := !u.LockedUntil.IsZero() && time.Now().Before(u.LockedUntil)
 
 	data := struct {
@@ -184,7 +184,7 @@ func adminUserEditForm(w http.ResponseWriter, r *http.Request) {
 		IsLocked:        isLocked,
 	}
 	if err := tmpl.ExecuteTemplate(w, "layout.html", data); err != nil {
-		log.Printf("❌ Errore rendering user edit: %v", err)
+		Errorf("Errore rendering user edit: %v", err)
 		http.Error(w, "Errore interno", http.StatusInternalServerError)
 	}
 }
@@ -213,9 +213,7 @@ func adminUserEditPost(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// ════════════════════════════════════════════════════════════
-	// RESET MFA PER QUESTO UTENTE
-	// ════════════════════════════════════════════════════════════
+	// RESET MFA
 	if action == "reset_mfa" {
 		if !config.MFAEnabled {
 			http.Error(w, "MFA non è abilitato globalmente", http.StatusBadRequest)
@@ -228,27 +226,25 @@ func adminUserEditPost(w http.ResponseWriter, r *http.Request) {
 		u.TOTPEnabled = false
 		u.TOTPSecret = ""
 		u.TOTPBackupCodes = []string{}
-		u.TOTPForceSetup = true // Forza la riconfigurazione
+		u.TOTPForceSetup = true
 		u.LastModified = time.Now()
 		saveUsers(currentDataDir)
 
 		go func(userName string) {
 			usersPath := filepath.Join(currentDataDir, "users.enc")
 			if err := SyncFileToAllRemotes(usersPath); err != nil {
-				log.Printf("❌ Errore sincronizzazione utenti (reset MFA per %s): %v", userName, err)
+				Errorf("Errore sincronizzazione utenti (reset MFA per %s): %v", userName, err)
 			} else {
-				log.Printf("✅ Utenti sincronizzati dopo reset MFA di '%s'", userName)
+				Infof("Utenti sincronizzati dopo reset MFA di '%s'", userName)
 			}
 		}(username)
 
-		WriteAuditLog("MFA_RESET_ADMIN", username, fmt.Sprintf("Reset MFA per %s", username))
+		WriteAuditLogWithRequest("MFA_RESET_ADMIN", username, fmt.Sprintf("Reset MFA per %s", username), r)
 		http.Redirect(w, r, "/admin/users", http.StatusFound)
 		return
 	}
 
-	// ════════════════════════════════════════════════════════════
 	// ELIMINA UTENTE
-	// ════════════════════════════════════════════════════════════
 	if action == "delete" {
 		if isProtected {
 			http.Error(w, "Non puoi eliminare questo utente", http.StatusForbidden)
@@ -260,26 +256,25 @@ func adminUserEditPost(w http.ResponseWriter, r *http.Request) {
 		go func(userName string) {
 			usersPath := filepath.Join(currentDataDir, "users.enc")
 			if err := SyncFileToAllRemotes(usersPath); err != nil {
-				log.Printf("❌ Errore sincronizzazione utenti (eliminazione da edit): %v", err)
+				Errorf("Errore sincronizzazione utenti (eliminazione da edit): %v", err)
 			} else {
-				log.Printf("✅ Utenti sincronizzati dopo eliminazione di '%s'", userName)
+				Infof("Utenti sincronizzati dopo eliminazione di '%s'", userName)
 			}
 		}(username)
 
+		WriteAuditLogWithRequest("USER_DELETE", username, fmt.Sprintf("Eliminato utente %s da edit", username), r)
 		http.Redirect(w, r, "/admin/users", http.StatusFound)
 		return
 	}
 
-	// ════════════════════════════════════════════════════════════
-	// SALVA MODIFICA (esistente)
-	// ════════════════════════════════════════════════════════════
+	// SALVA MODIFICA
 	if !isProtected {
 		u.Role = UserRole(r.FormValue("role"))
 		u.Enabled = r.FormValue("enabled") == "on"
 		u.LastModified = time.Now()
 	}
 
-	// Reset password (esistente)
+	// Reset password
 	if r.FormValue("reset_password") == "on" {
 		defaultPwd := username + "123"
 		hashDefault, err := hashPassword(defaultPwd)
@@ -297,12 +292,13 @@ func adminUserEditPost(w http.ResponseWriter, r *http.Request) {
 		go func(userName string) {
 			usersPath := filepath.Join(currentDataDir, "users.enc")
 			if err := SyncFileToAllRemotes(usersPath); err != nil {
-				log.Printf("❌ Errore sincronizzazione utenti (reset password): %v", err)
+				Errorf("Errore sincronizzazione utenti (reset password): %v", err)
 			} else {
-				log.Printf("✅ Utenti sincronizzati dopo reset password di '%s'", userName)
+				Infof("Utenti sincronizzati dopo reset password di '%s'", userName)
 			}
 		}(username)
 
+		WriteAuditLogWithRequest("PASSWORD_RESET_ADMIN", username, fmt.Sprintf("Reset password per %s", username), r)
 		http.Redirect(w, r, "/admin/users", http.StatusFound)
 		return
 	}
@@ -312,12 +308,13 @@ func adminUserEditPost(w http.ResponseWriter, r *http.Request) {
 	go func(userName string) {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
-			log.Printf("❌ Errore sincronizzazione utenti (modifica): %v", err)
+			Errorf("Errore sincronizzazione utenti (modifica): %v", err)
 		} else {
-			log.Printf("✅ Utenti sincronizzati dopo modifica di '%s'", userName)
+			Infof("Utenti sincronizzati dopo modifica di '%s'", userName)
 		}
 	}(username)
 
+	WriteAuditLogWithRequest("USER_EDIT", username, fmt.Sprintf("Modificato utente %s", username), r)
 	http.Redirect(w, r, "/admin/users", http.StatusFound)
 }
 
@@ -338,15 +335,15 @@ func adminUserUnlock(w http.ResponseWriter, r *http.Request) {
 	u.LockedUntil = time.Time{}
 	saveUsers(currentDataDir)
 
-	log.Printf("Admin ha sbloccato l'account %s", username)
-	WriteAuditLog("user_unlock", username, "Account sbloccato da admin")
+	Infof("Admin ha sbloccato l'account %s", username)
+	WriteAuditLogWithRequest("user_unlock", username, "Account sbloccato da admin", r)
 
 	go func(userName string) {
 		usersPath := filepath.Join(currentDataDir, "users.enc")
 		if err := SyncFileToAllRemotes(usersPath); err != nil {
-			log.Printf("❌ Errore sincronizzazione utenti (sblocco): %v", err)
+			Errorf("Errore sincronizzazione utenti (sblocco): %v", err)
 		} else {
-			log.Printf("✅ Utenti sincronizzati dopo sblocco di '%s'", userName)
+			Infof("Utenti sincronizzati dopo sblocco di '%s'", userName)
 		}
 	}(username)
 
