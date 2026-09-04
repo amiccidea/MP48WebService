@@ -65,7 +65,6 @@ func scanAllLogs() ([]LogFileInfo, error) {
 		}
 	}
 
-	// 🔄 Aggiungi sempre l'audit log directory (se configurata)
 	if config.AuditLogDir != "" {
 		alreadyIncluded := false
 		for _, cat := range config.LogCategories {
@@ -185,7 +184,6 @@ func apiLogsHandler(w http.ResponseWriter, r *http.Request) {
 		allLogs = filtered
 	}
 
-	// 🔽 ORDINA PER DATA DECRESCENTE (dal più recente al più vecchio)
 	sort.Slice(allLogs, func(i, j int) bool {
 		return allLogs[i].ModTimeUnix > allLogs[j].ModTimeUnix
 	})
@@ -224,31 +222,55 @@ func getCategoriesList() []string {
 	return cats
 }
 
+// ==================== DOWNLOAD LOG ====================
 func logsDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	filePath := r.URL.Query().Get("path")
 	if filePath == "" {
 		http.Error(w, "Percorso mancante", http.StatusBadRequest)
 		return
 	}
-	allowed := false
+
+	var allowedBase string
+	var fullPath string
+	var err error
+
 	for _, cat := range config.LogCategories {
 		for _, dir := range cat.Directories {
-			if strings.HasPrefix(filepath.Clean(filePath), filepath.Clean(dir)) {
-				allowed = true
-				break
+			// Verifica se il percorso assoluto è dentro la directory
+			cleanDir := filepath.Clean(dir)
+			cleanFilePath := filepath.Clean(filePath)
+
+			if strings.HasPrefix(cleanFilePath, cleanDir) {
+				// Calcola il percorso relativo per validarlo
+				relPath, errRel := filepath.Rel(cleanDir, cleanFilePath)
+				if errRel == nil {
+					// Validazione del percorso relativo
+					fullPath, err = ValidatePath(dir, relPath)
+					if err == nil {
+						if _, err := os.Stat(fullPath); err == nil {
+							allowedBase = dir
+							break
+						}
+					}
+				}
 			}
 		}
+		if allowedBase != "" {
+			break
+		}
 	}
-	if !allowed {
+
+	if allowedBase == "" {
 		http.Error(w, "Accesso negato", http.StatusForbidden)
 		return
 	}
-	w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(filepath.Base(filePath)))
+
+	w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(filepath.Base(fullPath)))
 	w.Header().Set("Content-Type", "application/octet-stream")
-	http.ServeFile(w, r, filePath)
+	http.ServeFile(w, r, fullPath)
 }
 
-// logsDeleteHandler elimina un file di log (solo admin) - con sincronizzazione eliminazione
+// ==================== ELIMINA LOG ====================
 func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -256,8 +278,6 @@ func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	username, isAdmin := getUserContext(r)
-	log.Printf("logsDeleteHandler: username=%s, isAdmin=%v", username, isAdmin)
-
 	if !isAdmin {
 		http.Error(w, "Accesso negato", http.StatusForbidden)
 		return
@@ -268,34 +288,45 @@ func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Percorso mancante", http.StatusBadRequest)
 		return
 	}
-	log.Printf("Percorso ricevuto: %q", filePath)
 
-	cleanPath := filepath.Clean(filePath)
-	log.Printf("Percorso pulito: %q", cleanPath)
+	var allowedBase string
+	var fullPath string
+	var err error
 
-	allowed := false
 	for _, cat := range config.LogCategories {
 		for _, dir := range cat.Directories {
 			cleanDir := filepath.Clean(dir)
-			if strings.HasPrefix(strings.ToLower(cleanPath), strings.ToLower(cleanDir)) {
-				allowed = true
-				break
+			cleanFilePath := filepath.Clean(filePath)
+
+			if strings.HasPrefix(cleanFilePath, cleanDir) {
+				relPath, errRel := filepath.Rel(cleanDir, cleanFilePath)
+				if errRel == nil {
+					fullPath, err = ValidatePath(dir, relPath)
+					if err == nil {
+						allowedBase = dir
+						break
+					}
+				}
 			}
 		}
+		if allowedBase != "" {
+			break
+		}
 	}
-	if !allowed {
-		log.Printf("Accesso negato: percorso %q non consentito", cleanPath)
+
+	if allowedBase == "" {
+		log.Printf("Accesso negato: percorso %q non consentito", filePath)
 		http.Error(w, "Accesso negato", http.StatusForbidden)
 		return
 	}
 
-	if err := os.Remove(cleanPath); err != nil {
-		log.Printf("Errore eliminazione file %s: %v", cleanPath, err)
+	if err := os.Remove(fullPath); err != nil {
+		log.Printf("Errore eliminazione file %s: %v", fullPath, err)
 		http.Error(w, "Errore eliminazione file", http.StatusInternalServerError)
 		return
 	}
 
-	WriteAuditLog("LOG_DELETE", username, fmt.Sprintf("eliminato file log %s", cleanPath))
+	WriteAuditLog("LOG_DELETE", username, fmt.Sprintf("eliminato file log %s", fullPath))
 
 	go func(path string) {
 		if err := SyncFileDeleteFromAllRemotes(path); err != nil {
@@ -303,14 +334,11 @@ func logsDeleteHandler(w http.ResponseWriter, r *http.Request) {
 		} else {
 			log.Printf("✅ Eliminazione log %s sincronizzata sulle macchine remote", path)
 		}
-	}(cleanPath)
+	}(fullPath)
 
 	w.WriteHeader(http.StatusOK)
 }
 
-// ==================== SINCRONIZZAZIONE AUDIT LOG ====================
-
-// StartAuditLogSyncTicker avvia un ticker periodico per sincronizzare l'audit log
 func StartAuditLogSyncTicker(intervalMinutes int) {
 	if intervalMinutes <= 0 {
 		intervalMinutes = 5
@@ -324,7 +352,6 @@ func StartAuditLogSyncTicker(intervalMinutes int) {
 	}()
 }
 
-// syncAuditLog sincronizza il file di audit log corrente
 func syncAuditLog() {
 	if config.AuditLogDir == "" {
 		log.Printf("⚠️ AuditLogDir non configurato, salto sincronizzazione")
@@ -367,7 +394,6 @@ func syncAuditLog() {
 	log.Printf("✅ Audit log sincronizzato: %s", filename)
 }
 
-// SyncAuditLogNowHandler sincronizza l'audit log su richiesta (endpoint manuale per admin)
 func SyncAuditLogNowHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)

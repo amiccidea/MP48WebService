@@ -13,6 +13,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let isAdmin = false;
     const pageSize = 50;
 
+    function getCSRFToken() {
+        const meta = document.querySelector('meta[name="csrf-token"]');
+        return meta ? meta.getAttribute('content') : '';
+    }
+
     function escapeHtml(str) {
         if (!str) return '';
         return str.replace(/[&<>]/g, function(m) {
@@ -83,7 +88,10 @@ document.addEventListener('DOMContentLoaded', () => {
                             if (confirm('Sei sicuro di voler eliminare questo file di log?')) {
                                 fetch('/logs/delete', {
                                     method: 'POST',
-                                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                                    headers: { 
+                                        'Content-Type': 'application/x-www-form-urlencoded',
+                                        'X-CSRF-Token': getCSRFToken()
+                                    },
                                     body: 'path=' + encodeURIComponent(path)
                                 }).then(resp => {
                                     if (resp.ok) {

@@ -95,7 +95,6 @@ func backupCurrentConfigDir() (string, string, error) {
 
 // ==================== ESTRAZIONE ARCHIVI CON PROTEZIONE ZIP SLIP ====================
 
-// extractArchive estrae un archivio con protezione Zip Slip
 func extractArchive(archivePath, destDir string) error {
 	ext := strings.ToLower(filepath.Ext(archivePath))
 	switch ext {
@@ -114,7 +113,6 @@ func extractArchive(archivePath, destDir string) error {
 	}
 }
 
-// extractZip estrae ZIP con protezione Zip Slip
 func extractZip(zipPath, destDir string) error {
 	r, err := zip.OpenReader(zipPath)
 	if err != nil {
@@ -128,7 +126,6 @@ func extractZip(zipPath, destDir string) error {
 		fpath := filepath.Join(destDir, f.Name)
 		fpath = filepath.Clean(fpath)
 
-		// Protezione Zip Slip
 		if !strings.HasPrefix(fpath, destDir) {
 			return fmt.Errorf("tentativo di path traversal: %s", f.Name)
 		}
@@ -163,7 +160,6 @@ func extractZip(zipPath, destDir string) error {
 	return nil
 }
 
-// extractTar estrae TAR con protezione Zip Slip
 func extractTar(tarPath, destDir string) error {
 	f, err := os.Open(tarPath)
 	if err != nil {
@@ -186,7 +182,6 @@ func extractTar(tarPath, destDir string) error {
 		target := filepath.Join(destDir, header.Name)
 		target = filepath.Clean(target)
 
-		// Protezione Zip Slip
 		if !strings.HasPrefix(target, destDir) {
 			return fmt.Errorf("tentativo di path traversal: %s", header.Name)
 		}
@@ -210,7 +205,6 @@ func extractTar(tarPath, destDir string) error {
 	return nil
 }
 
-// extractTarGz estrae TAR.GZ con protezione Zip Slip
 func extractTarGz(tarGzPath, destDir string) error {
 	f, err := os.Open(tarGzPath)
 	if err != nil {
@@ -239,7 +233,6 @@ func extractTarGz(tarGzPath, destDir string) error {
 		target := filepath.Join(destDir, header.Name)
 		target = filepath.Clean(target)
 
-		// Protezione Zip Slip
 		if !strings.HasPrefix(target, destDir) {
 			return fmt.Errorf("tentativo di path traversal: %s", header.Name)
 		}
@@ -409,17 +402,17 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		endUnix = time.Now().Unix()
 	}
 
-	// ✅ Sostituito os.ReadDir con ioutil.ReadDir (Go 1.15)
-	entries, err := ioutil.ReadDir(backupDir)
+	// Usa ioutil.ReadDir per Go 1.13
+	files, err := ioutil.ReadDir(backupDir)
 	if err != nil {
-		entries = []os.FileInfo{}
+		files = []os.FileInfo{}
 	}
 	var backups []BackupFileInfo
-	for _, entry := range entries {
-		if entry.IsDir() {
+	for _, info := range files {
+		if info.IsDir() {
 			continue
 		}
-		name := entry.Name()
+		name := info.Name()
 		extOk := false
 		for _, ext := range backupExtensions {
 			if strings.HasSuffix(strings.ToLower(name), ext) {
@@ -430,7 +423,7 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		if !extOk {
 			continue
 		}
-		modTime := entry.ModTime()
+		modTime := info.ModTime()
 		modUnix := modTime.Unix()
 		if startUnix > 0 && modUnix < startUnix {
 			continue
@@ -442,7 +435,7 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 			Name:       name,
 			ModTime:    modTime.Format("2006-01-02 15:04:05"),
 			ModTimeRaw: modTime,
-			Size:       formatFileSize(entry.Size()),
+			Size:       formatFileSize(info.Size()),
 		})
 	}
 	sort.Slice(backups, func(i, j int) bool {
@@ -488,7 +481,7 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		IsMultiCPU      bool
 		CSRFField       template.HTML
 		CSRFToken       string
-		MFAEnabled		bool
+		MFAEnabled      bool
 	}{
 		Username:        username,
 		IsAdmin:         isAdmin,
@@ -510,15 +503,21 @@ func configHistoryHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Download backup
 func configHistoryDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	filename := strings.TrimPrefix(r.URL.Path, "/config-history/download/")
 	if filename == "" {
 		http.Error(w, "Nome file mancante", http.StatusBadRequest)
 		return
 	}
-	filePath := filepath.Join(config.ConfigHistoryDir, filename)
-	info, err := os.Stat(filePath)
+
+	fullPath, err := ValidatePath(config.ConfigHistoryDir, filename)
+	if err != nil {
+		log.Printf("Errore validazione percorso download backup: %v", err)
+		http.Error(w, "Percorso non valido", http.StatusBadRequest)
+		return
+	}
+
+	info, err := os.Stat(fullPath)
 	if err != nil {
 		http.Error(w, "File non trovato", http.StatusNotFound)
 		return
@@ -527,22 +526,23 @@ func configHistoryDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", strconv.FormatInt(info.Size(), 10))
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	http.ServeFile(w, r, filePath)
+	http.ServeFile(w, r, fullPath)
 }
 
-// Download singolo file della configurazione corrente
 func configCurrentFileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	filePathParam := r.URL.Query().Get("path")
 	if filePathParam == "" {
 		http.Error(w, "Percorso mancante", http.StatusBadRequest)
 		return
 	}
-	cleanPath := filepath.Clean(filePathParam)
-	if strings.Contains(cleanPath, "..") {
+
+	fullPath, err := ValidatePath(config.CurrentConfigurationDir, filePathParam)
+	if err != nil {
+		log.Printf("Errore validazione percorso download file corrente: %v", err)
 		http.Error(w, "Percorso non valido", http.StatusBadRequest)
 		return
 	}
-	fullPath := filepath.Join(config.CurrentConfigurationDir, cleanPath)
+
 	info, err := os.Stat(fullPath)
 	if err != nil {
 		http.Error(w, "File non trovato", http.StatusNotFound)
@@ -555,25 +555,27 @@ func configCurrentFileDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, fullPath)
 }
 
-// Elimina backup
 func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	filename := strings.TrimPrefix(r.URL.Path, "/config-history/delete/")
 	if filename == "" {
 		http.Error(w, "Nome file mancante", http.StatusBadRequest)
 		return
 	}
-	if strings.Contains(filename, "..") {
+
+	fullPath, err := ValidatePath(config.ConfigHistoryDir, filename)
+	if err != nil {
+		log.Printf("Errore validazione percorso eliminazione backup: %v", err)
 		http.Error(w, "Percorso non valido", http.StatusBadRequest)
 		return
 	}
-	filePath := filepath.Join(config.ConfigHistoryDir, filename)
 
-	absFilePath, err := filepath.Abs(filePath)
+	absFilePath, err := filepath.Abs(fullPath)
 	if err != nil {
-		absFilePath = filePath
+		absFilePath = fullPath
 	}
 
-	if err := os.Remove(filePath); err != nil {
+	if err := os.Remove(fullPath); err != nil {
+		log.Printf("Errore eliminazione file %s: %v", fullPath, err)
 		http.Error(w, "Errore eliminazione", http.StatusInternalServerError)
 		return
 	}
@@ -592,7 +594,6 @@ func configHistoryDeleteHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// Ripristina backup
 func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -608,8 +609,15 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Nome file mancante", http.StatusBadRequest)
 		return
 	}
-	backupPath := filepath.Join(config.ConfigHistoryDir, filename)
-	if _, err := os.Stat(backupPath); os.IsNotExist(err) {
+
+	fullPath, err := ValidatePath(config.ConfigHistoryDir, filename)
+	if err != nil {
+		log.Printf("Errore validazione percorso restore backup: %v", err)
+		http.Error(w, "Percorso non valido", http.StatusBadRequest)
+		return
+	}
+
+	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		http.Error(w, "File di backup non trovato", http.StatusNotFound)
 		return
 	}
@@ -626,7 +634,7 @@ func configHistoryRestoreHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	log.Printf("Backup automatico creato: %s", backupAutoName)
 
-	if err := extractArchive(backupPath, config.CurrentConfigurationDir); err != nil {
+	if err := extractArchive(fullPath, config.CurrentConfigurationDir); err != nil {
 		log.Printf("Errore estrazione: %v", err)
 		http.Error(w, "Errore durante il ripristino", http.StatusInternalServerError)
 		return
